@@ -1,13 +1,19 @@
 # -*- coding: UTF-8 -*-
 import logging
+import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from ast import literal_eval
 from functools import wraps
+from io import StringIO
 from os.path import exists
 from time import perf_counter
 
 from .__info__ import __author__, __copyright__, __email__, __license__, __reference__, __source__, __version__
 from .__init__ import bintropy, THRESHOLDS
+
+
+lieflog = logging.getLogger("lief")
+lieflog.setLevel(logging.CRITICAL)
 
 
 def valid_file(path):
@@ -39,7 +45,7 @@ def main():
             "\nThis tool returns whether a binary contains compressed/encrypted bytes or not.\n" \
             "It supports both modes from the reference paper (by default per section or full binary with -f/--full)." \
             "\nAs decision criteria, it considers the highest block entropy (%.3f) and average entropy (%.3f) values" \
-            " from the paper.\n\n" % THRESHOLDS[::-1]
+            " from the paper.\n\n" % THRESHOLDS['default'][::-1]
     descr = descr.format(__version__, __author__, __email__, __copyright__, __license__, __reference__, __source__)
     examples = "usage examples:\n- " + "\n- ".join([
         "bintropy elf",
@@ -61,13 +67,14 @@ def main():
     parser.add_argument("--do-not-decide", dest="decide", action="store_false",
                         help="do not decide if packed, return entropy values (default: decide)")
     parser.add_argument("--threshold-average-entropy", dest="threshold1", type=Positive(float, int),
-                        help="threshold for the average entropy (default: %.3f)" % THRESHOLDS[0])
+                        help="threshold for the average entropy")
     parser.add_argument("--threshold-highest-entropy", dest="threshold2", type=Positive(float, int),
-                        help="threshold for the highest entropy (default: %.3f)" % THRESHOLDS[1])
+                        help="threshold for the highest entropy")
     args = parser.parse_args()
     logging.basicConfig()
     args.logger = logging.getLogger("bintropy")
     args.logger.setLevel([logging.INFO, logging.DEBUG][args.verbose])
+    code = 0
     # execute the tool
     if args.benchmark:
         t1 = perf_counter()
@@ -77,9 +84,11 @@ def main():
                      args.bsize,
                      not args.all_blocks,
                      args.decide,
-                     args.logger,
                      args.threshold1,
-                     args.threshold2)
+                     args.threshold2,
+                     args.logger)
+        if r is None:
+            raise Exception("no result")
         dt = str(perf_counter() - t1) if args.benchmark else ""
         if not isinstance(r, (tuple, list)):
             r = [r]
@@ -88,7 +97,8 @@ def main():
             r.append(dt)
         print(" ".join(r))
     except Exception as e:
-        args.logger.exception(e)
-        return 1
-    return 0
+        if str(e) != "no result":
+            args.logger.exception(e)
+        code = 1
+    return code
 

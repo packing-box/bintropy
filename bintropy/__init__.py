@@ -1,21 +1,25 @@
 # -*- coding: UTF-8 -*-
-import magic
+import lief
 import math
-import re
-from elftools.elf.elffile import ELFFile
-from pefile import PE
+import os
 
 
 __all__ = ["bintropy", "entropy", "is_packed", "THRESHOLDS"]
 
 
-__log = lambda l, m: l.debug(m) if l else None
+__log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
+# IMPORTANT NOTE: these values were computed while experimenting with PE files and with the first operation mode ;
+#                  this may have an impact on typical values for other executable formats
+THRESHOLDS = {
+    'default':           (6.677, 7.199),  # average entropy, highest entropy
+    lief.EXE_FORMATS.PE: (6.677, 7.199),
+    #TODO: get average and highest entropy values for lief.EXE_FORMATS.ELF
+    #TODO: get average and highest entropy values for lief.EXE_FORMATS.MACHO
+}
 
-THRESHOLDS = (6.677, 7.199)  # average entropy, highest entropy
 
-
-def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True, decide=True, logger=None,
-             threshold_average_entropy=THRESHOLDS[0], threshold_highest_entropy=THRESHOLDS[1]):
+def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True, decide=True,
+             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
     :param executable:                path to the executable to be analyzed
@@ -25,19 +29,23 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
     :param decide:                    decide if packed or not, otherwise simply return the entropy values
     :param threshold_average_entropy: threshold on average entropy for deciding if packed
     :param threshold_highest_entropy: threshold on highest entropy for deciding if packed
+    :param logger:                    logger instance for debug purpose
     :return:                          if decide is True  => bool (whether the input executable is packed or not)
                                                    False => (average_entropy, highest_block_entropy)
     """
+    # try to parse the binary first
+    tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
+    os.dup2(null_fd, 2)
+    binary = lief.parse(str(executable))
+    os.dup2(tmp_fd, 2)  # restore stderr
+    os.close(null_fd)
+    if binary is None:
+        raise OSError("Unknown format")
+    # now select the right thresholds
+    thresholds = THRESHOLDS.get(binary.format, THRESHOLDS['default'])
     _t1, _t2 = threshold_average_entropy, threshold_highest_entropy
-    _t1, _t2 = [_t1, THRESHOLDS[0]][_t1 is None], [_t2, THRESHOLDS[1]][_t2 is None]
-    try:
-        ft = magic.from_file(str(executable))
-    except OSError:
-        return
-    pe = re.match("PE32\+? executable ", ft) is not None
-    if not pe and not re.match("(set[gu]id )?ELF (32|64)-bit ", ft):
-        raise OSError("The input file is not a PE or ELF")  # only works for PE and ELF
-    # first operation mode: compute the entropy of the whole executable
+    _t1, _t2 = [_t1, thresholds[0]][_t1 is None], [_t2, thresholds[1]][_t2 is None]
+    # FIRST OPERATION MODE: compute the entropy of the whole executable
     if full:
         with open(str(executable), 'rb') as f:
             exe = f.read()
@@ -50,22 +58,22 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
                 for i, j in enumerate(e[0]):
                     msg += ("\n    #{: <%s}: {}" % iw).format(i + 1, "-" if j is None else j)
             __log(logger, msg)
-        return is_packed(e[0], e[1], logger, _t1, _t2) if decide else (max([x for x in e[0] if x is not None]), e[1])
-    # second operation mode: compute a weighted entropy of all the sections of the executable
+        return is_packed(e[0], e[1], _t1, _t2, logger) if decide else (max([x for x in e[0] if x is not None]), e[1])
+    # SECOND OPERATION MODE: compute a weighted entropy of all the sections of the executable
     else:
-        e, w = {}, {}
         def _handle(n, d):
             r = entropy(d, blocksize, ignore_half_block_zeros)
             e[n] = r if isinstance(r, (list, tuple)) else ([r], r)
             w[n] = len(d)
-        if pe:
-            for s in PE(str(executable)).sections:
-                _handle(s.Name.strip(b"\x00").decode() or "main", s.get_data())
-        else:
-            with open(str(executable), 'rb') as f:
-                elf = ELFFile(f)
-                for s in elf.iter_sections():
-                    _handle(s.name.strip() or "main", elf.get_section_by_name(s.name).data())
+        e, w = {}, {}
+        if len(binary.sections) > 0:
+            for section in binary.sections:
+                n, d = section.name, section.content
+                _handle(n, d)
+        else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
+            __log(logger, "This file has no section", "error")
+            __log(logger, "please try with -f/--full for the other mode of operation", "warning")
+            return
         if logger:
             msg = "Entropy per section:"
             for name, entr in e.items():
@@ -84,7 +92,7 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
             e_avg2 += entr[1] * w[n]
             t += w[n]
         e2, e_avg2 = e2 / t, e_avg2 / t
-        return is_packed(e2, e_avg2, logger, _t1, _t2) if decide else (e2, e_avg2)
+        return is_packed(e2, e_avg2, _t1, _t2, logger) if decide else (e2, e_avg2)
 
 
 def entropy(something, blocksize=0, ignore_half_block_zeros=False):
@@ -128,17 +136,17 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
     return (e, sum([n or 0 for n in e]) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 else e[0]
 
 
-def is_packed(entropies, average, logger=None, threshold_average_entropy=THRESHOLDS[0],
-                                               threshold_highest_entropy=THRESHOLDS[1]):
+def is_packed(entropies, average, threshold_average_entropy, threshold_highest_entropy, logger=None):
     """ Decision criteria as of https://ieeexplore.ieee.org/document/4140989.
     
     :param entropies:                 the list of block entropy values or the highest block entropy value
     :param average:                   the average block entropy
     :param threshold_average_entropy: threshold on average entropy for deciding if packed
     :param threshold_highest_entropy: threshold on highest entropy for deciding if packed
+    :param logger:                    logger instance for debug purpose
+    :return:                          whether the binary contains compressed/encrypted bytes given the thresholds
     """
     _t1, _t2 = threshold_average_entropy, threshold_highest_entropy
-    _t1, _t2 = [_t1, THRESHOLDS[0]][_t1 is None], [_t2, THRESHOLDS[1]][_t2 is None]
     if not isinstance(entropies, (list, tuple)):
         entropies = [entropies]
     entropies = [x for x in entropies if x is not None]

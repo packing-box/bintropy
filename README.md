@@ -7,7 +7,9 @@
 
 ## Introduction
 
-This tool is the implementation in Python of Bintropy, presented in [this paper](https://ieeexplore.ieee.org/document/4140989). It implements both modes of operation, either on the entire binary or per section. It uses the entropy values mentioned in the [paper](https://ieeexplore.ieee.org/document/4140989) for deciding whether the binary contains compressed/encrypted bytes.
+This tool is an implementation in Python of Bintropy, an analysis tool presented in [this paper](https://ieeexplore.ieee.org/document/4140989) in the scope of packing detection based on entropy. It implements both modes of operation, either on the entire binary or per section. It uses the entropy values mentioned in the [paper](https://ieeexplore.ieee.org/document/4140989) for deciding whether the binary contains compressed/encrypted bytes.
+
+It relies on [`lief`](https://github.com/lief-project/LIEF) for abstracting either **PE**, **ELF** or **Mach-O** executables. This tool thus supports these three formats.
 
 ## Setup
 
