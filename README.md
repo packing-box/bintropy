@@ -1,7 +1,7 @@
 [![PyPi](https://img.shields.io/pypi/v/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
-[![Build Status](https://travis-ci.org/dhondta/bintropy.svg?branch=master)](https://travis-ci.org/dhondta/bintropy)
+[![Build Status](https://travis-ci.com/dhondta/bintropy.svg?branch=main)](https://travis-ci.com/dhondta/bintropy)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
-[![Requirements Status](https://requires.io/github/dhondta/bintropy/requirements.svg?branch=master)](https://requires.io/github/dhondta/bintropy/requirements/?branch=master)
+[![Requirements Status](https://requires.io/github/dhondta/bintropy/requirements/?branch=main)](https://requires.io/github/dhondta/bintropy/requirements/?branch=main)
 [![Known Vulnerabilities](https://snyk.io/test/github/dhondta/bintropy/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/bintropy?targetFile=requirements.txt)
 [![License](https://img.shields.io/pypi/l/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
 
