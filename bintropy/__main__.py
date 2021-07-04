@@ -43,22 +43,23 @@ def main():
     """ Tool's main function """
     descr = "Bintropy {}\n\nAuthor   : {} ({})\nCopyright: {}\nLicense  : {}\nReference: {}\nSource   : {}\n" \
             "\nThis tool returns whether a binary contains compressed/encrypted bytes or not.\n" \
-            "It supports both modes from the reference paper (by default per section or full binary with -f/--full)." \
+            "It supports both modes from the reference paper and adds a third mode of operation (based on segments)." \
             "\nAs decision criteria, it considers the highest block entropy (%.3f) and average entropy (%.3f) values" \
             " from the paper.\n\n" % THRESHOLDS['default'][::-1]
     descr = descr.format(__version__, __author__, __email__, __copyright__, __license__, __reference__, __source__)
     examples = "usage examples:\n- " + "\n- ".join([
         "bintropy elf",
         "bintropy program.exe -b",
-        "bintropy elf --blocksize 512 --full",
-        "bintropy program.exe --do-not-decide",
+        "bintropy elf --blocksize 512 --mode 1",
+        "bintropy program.exe -m 2 --do-not-decide",
         "bintropy program.exe --all-blocks --threshold-average-entropy 6.5",
     ])
     parser = ArgumentParser(description=descr, epilog=examples, formatter_class=RawTextHelpFormatter)
     parser.add_argument("path", type=valid_file, help="path to executable")
     parser.add_argument("-b", "--benchmark", action="store_true",
                         help="enable benchmarking, output in seconds (default: False)")
-    parser.add_argument("-f", "--full", action="store_true", help="consider the whole executable (default: False)")
+    parser.add_argument("-m", "--mode", choices=[0, 1, 2], type=int, default=0,
+                        help="mode of operation (default: 0)\n - 0: full binary\n - 1: per section\n - 2: per segment")
     parser.add_argument("-v", "--verbose", action="store_true", help="display debug information (default: False)")
     parser.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
                                                                   "the half are zeros (default: False)")
@@ -80,7 +81,7 @@ def main():
         t1 = perf_counter()
     try:
         r = bintropy(args.path,
-                     args.full,
+                     args.mode,
                      args.bsize,
                      not args.all_blocks,
                      args.decide,

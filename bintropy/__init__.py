@@ -8,7 +8,7 @@ __all__ = ["bintropy", "entropy", "is_packed", "THRESHOLDS"]
 
 
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
-# IMPORTANT NOTE: these values were computed while experimenting with PE files and with the first operation mode ;
+# IMPORTANT NOTE: these values were computed while experimenting with PE files and with the first mode of operation ;
 #                  this may have an impact on typical values for other executable formats
 THRESHOLDS = {
     'default':           (6.677, 7.199),  # average entropy, highest entropy
@@ -18,7 +18,7 @@ THRESHOLDS = {
 }
 
 
-def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True, decide=True,
+def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
              threshold_average_entropy=None, threshold_highest_entropy=None, logger=None):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
@@ -33,7 +33,7 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
     :return:                          if decide is True  => bool (whether the input executable is packed or not)
                                                    False => (average_entropy, highest_block_entropy)
     """
-    # try to parse the binary first
+    # try to parse the binary first ; capture the stderr messages from LIEF
     tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
     os.dup2(null_fd, 2)
     binary = lief.parse(str(executable))
@@ -45,8 +45,8 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
     thresholds = THRESHOLDS.get(binary.format, THRESHOLDS['default'])
     _t1, _t2 = threshold_average_entropy, threshold_highest_entropy
     _t1, _t2 = [_t1, thresholds[0]][_t1 is None], [_t2, thresholds[1]][_t2 is None]
-    # FIRST OPERATION MODE: compute the entropy of the whole executable
-    if full:
+    # FIRST MODE: compute the entropy of the whole executable
+    if mode == 0:
         with open(str(executable), 'rb') as f:
             exe = f.read()
         __log(logger, "Entropy (Shannon): {}".format(entropy(exe)))
@@ -59,23 +59,29 @@ def bintropy(executable, full=False, blocksize=256, ignore_half_block_zeros=True
                     msg += ("\n    #{: <%s}: {}" % iw).format(i + 1, "-" if j is None else j)
             __log(logger, msg)
         return is_packed(e[0], e[1], _t1, _t2, logger) if decide else (max([x for x in e[0] if x is not None]), e[1])
-    # SECOND OPERATION MODE: compute a weighted entropy of all the sections of the executable
+    # SECOND AND THIRD MODES: compute a weighted entropy of all the sections or segments of the executable
     else:
         def _handle(n, d):
             r = entropy(d, blocksize, ignore_half_block_zeros)
             e[n] = r if isinstance(r, (list, tuple)) else ([r], r)
             w[n] = len(d)
         e, w = {}, {}
-        if len(binary.sections) > 0:
-            for section in binary.sections:
-                n, d = section.name, section.content
-                _handle(n, d)
-        else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
-            __log(logger, "This file has no section", "error")
-            __log(logger, "please try with -f/--full for the other mode of operation", "warning")
-            return
+        if mode == 1:  # per section
+            if len(binary.sections) > 0:
+                for section in binary.sections:
+                    n, d = section.name, section.content
+                    _handle(n, d)
+            else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
+                __log(logger, "This file has no section", "error")
+                __log(logger, "please try another mode of operation", "warning")
+                return
+        elif mode == 2:  # per segment
+            for i, segment in enumerate(binary.segments):
+                _handle("segment #%d" % i, segment.content)
+        else:
+            raise NotImplementedError("This mode does not exist")
         if logger:
-            msg = "Entropy per section:"
+            msg = "Entropy per %s:" % ["section", "segment"][mode == 2]
             for name, entr in e.items():
                 msg += "\n  %s: " % name
                 msg += "-" if entr[1] is None else "%s (average)" % entr[1]

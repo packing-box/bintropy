@@ -7,7 +7,7 @@
 
 ## Introduction
 
-This tool is an implementation in Python of Bintropy, an analysis tool presented in [this paper](https://ieeexplore.ieee.org/document/4140989) in the scope of packing detection based on entropy. It implements both modes of operation, either on the entire binary or per section. It uses the entropy values mentioned in the [paper](https://ieeexplore.ieee.org/document/4140989) for deciding whether the binary contains compressed/encrypted bytes.
+This tool is an implementation in Python of Bintropy, an analysis tool presented in [this paper](https://ieeexplore.ieee.org/document/4140989) in the scope of packing detection based on entropy. It implements both modes of operation and an additional one, respectively on the entire binary, per section or per segment. It uses the entropy values mentioned in the [paper](https://ieeexplore.ieee.org/document/4140989) for deciding whether the binary contains compressed/encrypted bytes.
 
 It relies on [`lief`](https://github.com/lief-project/LIEF) for abstracting either **PE**, **ELF** or **Mach-O** executables. This tool thus supports these three formats.
 
@@ -27,9 +27,15 @@ The help message explains every option.
 $ bintropy --help
 ```
 
-### Per-section operation mode
+### Modes of operation
 
-For this mode, do not use the `-f`/`--full` option. Moreover, you can use the `--dot-not-decide` option to prevent the tool from returning the boolen but the entropy values instead.
+Use the `-m`/`--mode` option.
+
+- `0`: full binary (default)
+- `1`: per section
+- `2`: per segment
+
+Note that mode 2 will logically give results very similar to mode 0.
 
 ```sh
 $ bintropy binary
@@ -39,15 +45,11 @@ $ bintropy binary --dot-not-decide
 <<< highest block entropy, average block entropy >>>
 ```
 
-### Full-binary operation mode
-
-For this mode, use the `-f`/`--full` option. Moreover, you can use the `--dot-not-decide` option to prevent the tool from returning the boolen but the entropy values instead.
-
 ```sh
-$ bintropy binary -f
+$ bintropy binary --mode [1|2]
 <<< boolean >>>
 
-$ bintropy binary -f --do-not-decide
+$ bintropy binary -m [1|2] --do-not-decide
 <<< highest block entropy, average block entropy >>>
 ```
 
@@ -65,7 +67,7 @@ $ bintropy binary -f --do-not-decide
 
 ### Overriding default entropy values
 
-The [reference paper](https://ieeexplore.ieee.org/document/4140989) uses 6.677 for the average block entropy and 7.199 for the highest block entropy. These values can be overriden with the dedicated options.
+The [reference paper](https://ieeexplore.ieee.org/document/4140989) uses 6.677 for the average block entropy and 7.199 for the highest block entropy (obtained by analyzing a dataset of PE files and using the first mode of operation). These values can be overriden with the dedicated options.
 
 ```sh
 $ bintropy binary --threshold-average-entropy 5.678 --threshold-highest-entropy 6.789
