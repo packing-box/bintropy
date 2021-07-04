@@ -4,7 +4,6 @@ import sys
 from argparse import ArgumentParser, RawTextHelpFormatter
 from ast import literal_eval
 from functools import wraps
-from io import StringIO
 from os.path import exists
 from time import perf_counter
 

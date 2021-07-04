@@ -156,6 +156,9 @@ def is_packed(entropies, average, threshold_average_entropy, threshold_highest_e
     if not isinstance(entropies, (list, tuple)):
         entropies = [entropies]
     entropies = [x for x in entropies if x is not None]
+    if len(entropies) == 0:
+        __log(logger, "No valid block found")
+        return False
     max_e = max(entropies)
     c1 = average >= _t1
     c2 = max_e >= _t2
