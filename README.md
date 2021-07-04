@@ -58,10 +58,10 @@ $ bintropy binary -m [1|2] --do-not-decide
 Use the `-b`/`--benchmark` option to get one more value, the processing time in seconds.
 
 ```sh
-$ bintropy binary
+$ bintropy binary -b
 <<< boolean, processing time >>>
 
-$ bintropy binary -f --do-not-decide
+$ bintropy binary -b --do-not-decide
 <<< highest block entropy, average block entropy, processing time >>>
 ```
 
