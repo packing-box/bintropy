@@ -1,3 +1,4 @@
+<p align="center"><img src="https://github.com/dhondta/bintropy/raw/main/logo.png"></p>
 <h1 align="center">Bintropy <a href="https://twitter.com/intent/tweet?text=Bintropy%20-%20Python%20implementation%20of%20the%20related%20analysis%20tool%20for%20packing%20detection%20based%20on%20entropy.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fdhondta%2fbintropy%0D%0A&hashtags=python,pe,lief,elf,macho,entropy,packer,packingdetection"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
 <h3 align="center">Detect packers on PE/ELF/Mach-O files using entropy.</h3>
 
