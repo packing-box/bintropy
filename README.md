@@ -70,6 +70,16 @@ $ bintropy binary --threshold-average-entropy 5.678 --threshold-highest-entropy 
 ```
 
 
+## :star: Related Projects
+
+You may also like these:
+
+- [Awesome Executable Packing](https://github.com/dhondta/awesome-executable-packing): A curated list of awesome resources related to executable packing.
+- [Docker Packing Box](https://github.com/dhondta/docker-packing-box): Docker image gathering packers and tools for making datasets of packed executables.
+- [PEiD](https://github.com/dhondta/peid): Python implementation of the Packed Executable iDentifier (PEiD).
+- [PyPackerDetect](https://github.com/dhondta/PyPackerDetect): Packing detection tool for PE files.
+
+
 ## :clap:  Supporters
 
 [![Stargazers repo roster for @dhondta/bintropy](https://reporoster.com/stars/dark/dhondta/bintropy)](https://github.com/dhondta/bintropy/stargazers)
