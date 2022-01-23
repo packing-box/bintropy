@@ -26,6 +26,15 @@ COLORS = {
 }
 MIN_ZONE_WIDTH = 5  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
                     #  if it is far smaller than the other sections)
+SUBLABELS = {
+    'ep':          lambda d: "EP at 0x%.8x in %s" % d['entrypoint'][1:],
+    'size':        lambda d: "Size = %s" % _human_readable_size(d['size'], 1),
+    'size-ep':     lambda d: "Size = %s\nEP at 0x%.8x in %s" % \
+                             (_human_readable_size(d['size'], 1), d['entrypoint'][1], d['entrypoint'][2]),
+    'size-ep-ent': lambda d: "Size = %s\nEP at 0x%.8x in %s\nAverage entropy: %.2f" % \
+                             (_human_readable_size(d['size'], 1), d['entrypoint'][1], d['entrypoint'][2],
+                              statistics.mean(d['entropy']) * 8),
+}
 # IMPORTANT NOTE: these values were computed while experimenting with PE files and with the first mode of operation ;
 #                  this may have an impact on typical values for other executable formats
 THRESHOLDS = {
@@ -34,6 +43,15 @@ THRESHOLDS = {
     #TODO: get average and highest entropy values for lief.EXE_FORMATS.ELF
     #TODO: get average and highest entropy values for lief.EXE_FORMATS.MACHO
 }
+
+
+def _human_readable_size(size, precision=0):
+    """ Convert size in bytes to a more readable form. """
+    i, units = 0, ["B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"]
+    while size > 1024 and i < len(units):
+        i += 1
+        size /= 1024.0
+    return "%.*f%s" % (precision, size, units[i])
 
 
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
@@ -133,7 +151,7 @@ def characteristics(executable, n_samples=2048, window_size=lambda s: 2*s):
     data = {'name': os.path.basename(executable), 'entropy': [], 'sections': []}
     # compute window-based entropy
     with open(str(executable), "rb") as f:
-        size = os.fstat(f.fileno()).st_size
+        size = data['size'] = os.fstat(f.fileno()).st_size
         step = -(-size // n_samples)
         chunksize = data['chunksize'] = size / n_samples
         if isinstance(window_size, type(lambda: 0)):
@@ -154,21 +172,26 @@ def characteristics(executable, n_samples=2048, window_size=lambda s: 2*s):
     os.close(null_fd)
     # entry point (EP)
     data['type'] = "ELF"
-    data['entrypoint'] = int(binary.entrypoint // data['chunksize'])
+    ep = binary.entrypoint
+    data['entrypoint'] = int(ep // data['chunksize'])
     # sections
+    __d = lambda s, e, n: (s, e, n, statistics.mean(data['entropy'][s:e+1]))
     if type(binary) is lief.PE.Binary:
         data['type'] = "PE"
-        data['sections'] = [(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
-        data['entrypoint'] = int(binary.rva_to_offset(binary.optional_header.addressof_entrypoint)) // data['chunksize']
+        data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
+        ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
+        data['entrypoint'] = int(ep // data['chunksize'])
+    ep_section = [s.name for s in binary.sections if s.offset <= ep <= s.offset + s.size][0]
+    data['entrypoint'] = (data['entrypoint'], ep, ep_section)
     for section in binary.sections:
         name = section.name.strip("\x00") or "<empty>"
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
-        data['sections'].append((int(min(start, max_end - MIN_ZONE_WIDTH)), int(max_end), name))
+        data['sections'].append(__d(int(min(start, max_end - MIN_ZONE_WIDTH)), int(max_end), name))
     last = data['sections'][-1][1]
     if last < n_samples:
-        data['sections'].append((int(last), int(n_samples), "Unallocated"))
+        data['sections'].append(__d(int(last), int(n_samples), "Unallocated"))
     return data
 
 
@@ -238,14 +261,15 @@ def is_packed(entropies, average, threshold_average_entropy, threshold_highest_e
     return c1 and c2
 
 
-def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None):
+def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, sublabel=None):
     """ Plot input binaries' characteristics on a same figure.
     
     :param img:        destination filename for the created figure
     :param filenames:  list of paths of the binaries to be included in the figure
     :param img_format: format of the created figure
     :param dpi:        resolution of the created figure
-    :param labels:     list of custom labels to be used for the binaries
+    :param labels:     list of custom labels to be used for the binaries (can be lambda-based)
+    :param sublabel:   static or lambda-based sublabel for display under the label
     """
     if len(filenames) == 0:
         raise ValueError("No executable to plot")
@@ -256,22 +280,44 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None):
     objs[0].axis("off")
     for i, filepath in enumerate(filenames):
         data, obj, filename = characteristics(filepath), objs[i+1], os.path.basename(filepath)
-        n = len(data['entropy'])
+        n, label = len(data['entropy']), None
+        obj.axis("off")
+        # set the main title for the whole figure
         if i == 0:
             fig.suptitle("Entropy per section of %s file: %s" % (data['type'], filename), x=[.6, .5][labels is None],
                          y=1.-.6/(nf+1), ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
+        # set the label and sublabel and display them
         try:
-            obj.text(s=labels[i], x=-420., y=.46, fontsize="large", ha="left", va="center")
+            label = labels[i]
+            if isinstance(label, type(lambda: 0)):
+                label = label(data)
         except:
             pass
-        obj.set_ybound(lower=0, upper=8)
-        obj.axis("off")
-        l = obj.vlines(x=data['entrypoint'], ymin=0, ymax=1, color="r", zorder=11)
-        l.set_label("Entry point")
-        obj.text(data['entrypoint'], -.15, "______", c="r", ha="center", rotation=90, size=.8,
+        if sublabel:
+            if isinstance(sublabel, str):
+                sublabel = SUBLABELS.get(sublabel)
+            sl = sublabel(data) if isinstance(sublabel, type(lambda: 0)) else None
+            if sl:
+                nl, y_pos, f_color = len(sl.split("\n")), .47, "black"
+                if label:
+                    f_size, f_color = "x-small" if nl <= 2 else "xx-small", "gray"
+                    y_pos = max(0., .46 - nl * [.16, .12, .09][min(3, nl)-1])
+                else:
+                    #y_pos -= nl * [0., .16, .3][min(3, nl)-1]
+                    f_size = ["medium", "small", "x-small"][min(3, nl)-1]
+                obj.text(s=sl, x=-420., y=y_pos, fontsize=f_size, color=f_color, ha="left", va="center")
+        if label:
+            y_pos = .46
+            if sublabel:
+                nl = len(sl.split("\n"))
+                y_pos = min(1., .46 + nl * [.16, .12, .09][min(3, nl)-1])
+            obj.text(s=label, x=-420., y=y_pos, fontsize="large", ha="left", va="center")
+        # display the entry point
+        obj.vlines(x=data['entrypoint'][0], ymin=0, ymax=1, color="r", zorder=11).set_label("Entry point")
+        obj.text(data['entrypoint'][0], -.15, "______", c="r", ha="center", rotation=90, size=.8,
                  bbox={'boxstyle': "rarrow", 'fc': "r", 'ec': "r", 'lw': 1})
         color_cursor, last = 0, None
-        for start, end, name in data['sections']:
+        for start, end, name, avg_ent in data['sections']:
             x = range(start, min(n, end + 1))
             # select the right color first
             try:
@@ -286,7 +332,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None):
                     pos_y = N_TOP
                 else:
                     pos_y = N_BOT if pos_y in [N_TOP, N_TOP2] else N_TOP
-                if last and last[2] and (start + end) // 2 - (last[2] + last[3]) // 2 < n // 10:
+                if last and last[2] and (start + end) // 2 - (last[2] + last[3]) // 2 < n // 15:
                     if pos_y == N_TOP:
                         pos_y = N_TOP2
                     elif pos_y == N_BOT:
@@ -298,7 +344,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None):
             obj.fill_between(x, [0] * len(x), data['entropy'][start:end+1], facecolor=c)
             l = obj.hlines(y=statistics.mean(data['entropy'][start:end+1]), xmin=x[0], xmax=x[-1], color="black",
                            linestyle=(0, (5, 5)), linewidth=.5)
-        l.set_label("Average entropy")
+        l.set_label("Average entropy of section")
     plt.subplots_adjust(left=[.32, .02][labels is None], right=1.02, bottom=.5/max(1.75, nf))
     h, l = objs[1].get_legend_handles_labels()
     plt.figlegend(h, l, loc="lower center", ncol=2)
