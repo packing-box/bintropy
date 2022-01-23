@@ -6,7 +6,7 @@ from os.path import exists
 from time import perf_counter
 
 from .__info__ import __author__, __copyright__, __email__, __license__, __reference__, __source__, __version__
-from .__init__ import bintropy, THRESHOLDS
+from .__init__ import bintropy, plot, THRESHOLDS
 
 
 lieflog = logging.getLogger("lief")
@@ -42,7 +42,8 @@ def main():
             "\nThis tool returns whether a binary contains compressed/encrypted bytes or not.\n" \
             "It supports both modes from the reference paper and adds a third mode of operation (based on segments)." \
             "\nAs decision criteria, it considers the highest block entropy (%.3f) and average entropy (%.3f) values" \
-            " from the paper.\n\n" % THRESHOLDS['default'][::-1]
+            " from the paper.\nIt is also able to generate a plot of the entropy of an input binary.\n\n" % \
+            THRESHOLDS['default'][::-1]
     descr = descr.format(__version__, __author__, __email__, __copyright__, __license__, __reference__, __source__)
     examples = "usage examples:\n- " + "\n- ".join([
         "bintropy elf",
@@ -50,6 +51,7 @@ def main():
         "bintropy elf --blocksize 512 --mode 1",
         "bintropy program.exe -m 2 --do-not-decide",
         "bintropy program.exe --all-blocks --threshold-average-entropy 6.5",
+        "bintropy program.exe --plot",
     ])
     parser = ArgumentParser(description=descr, epilog=examples, formatter_class=RawTextHelpFormatter)
     parser.add_argument("path", type=valid_file, help="path to executable")
@@ -57,6 +59,7 @@ def main():
                         help="enable benchmarking, output in seconds (default: False)")
     parser.add_argument("-m", "--mode", choices=[0, 1, 2], type=int, default=0,
                         help="mode of operation (default: 0)\n - 0: full binary\n - 1: per section\n - 2: per segment")
+    parser.add_argument("-p", "--plot", action="store_true", help="plot the entropy and sections (default: False)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display debug information (default: False)")
     parser.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
                                                                   "the half are zeros (default: False)")
@@ -94,6 +97,8 @@ def main():
         if dt != "":
             r.append(dt)
         print(" ".join(r))
+        if args.plot:
+            plot(args.path)
     except Exception as e:
         if str(e) != "no result":
             args.logger.exception(e)
