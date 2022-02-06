@@ -12,20 +12,21 @@ __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRES
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
 
 COLORS = {
-    'Headers':     "black",
-    'Unallocated': "lightgray",
+    'Headers': "black",
+    'Overlay': "lightgray",
     #TODO: these colors fit for a small number of sections, such as in a PE file ; it won't be enough for an ELF file
     #       that can have even more segments
-    'other':       ["darksalmon", "peru", "gold", "plum", "orchid", "sandybrown", "darkkhaki", "purple", "crimson"],
-    '.bss':        "steelblue",         # block started by symbol (uninitialized data)
-    '.data':       "skyblue",
-    '.rdata':      "cornflowerblue",
-    '.rsrc':       "royalblue",         # resources
-    '.text':       "darkseagreen",
-    '.tls':        "skyblue",           #thread-local storage
+    'other':   ["darksalmon", "peru", "gold", "plum", "orchid", "sandybrown", "darkkhaki", "purple", "crimson"],
+    '.bss':    "steelblue",         # block started by symbol (uninitialized data)
+    '.data':   "skyblue",
+    '.rdata':  "cornflowerblue",
+    '.rsrc':   "royalblue",         # resources
+    '.text':   "darkseagreen",
+    '.tls':    "skyblue",           #thread-local storage
 }
 MIN_ZONE_WIDTH = 5  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
                     #  if it is far smaller than the other sections)
+N_SAMPLES = 2048
 SUBLABELS = {
     'ep':          lambda d: "EP at 0x%.8x in %s" % d['entrypoint'][1:],
     'size':        lambda d: "Size = %s" % _human_readable_size(d['size'], 1),
@@ -137,7 +138,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
         return is_packed(e2, e_avg2, _t1, _t2, logger) if decide else (e2, e_avg2)
 
 
-def characteristics(executable, n_samples=2048, window_size=lambda s: 2*s):
+def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
     """ Compute executable's desired characteristics, including:
         - 'x' samples of entropy using a sliding window of size 'window_size'
         - sections' bounds (reduced according to the 'x' samples)
@@ -164,24 +165,34 @@ def characteristics(executable, n_samples=2048, window_size=lambda s: 2*s):
             window = window[max(0, len(window)-window_size) if cur_pos + winter < size else step:]
             # compute entropy
             data['entropy'].append(entropy(window)/8.)
-    # compute other characteristics
+    # compute other characteristics using LIEF (catch warnings from stderr)
     tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
     os.dup2(null_fd, 2)
     binary = lief.parse(str(executable))
     os.dup2(tmp_fd, 2)  # restore stderr
     os.close(null_fd)
+    if binary is None:
+        raise TypeError("Not an executable")
     # entry point (EP)
-    data['type'] = "ELF"
     ep = binary.entrypoint
     data['entrypoint'] = int(ep // data['chunksize'])
     # sections
     __d = lambda s, e, n: (s, e, n, statistics.mean(data['entropy'][s:e+1]))
-    if type(binary) is lief.PE.Binary:
+    if type(binary) is lief.ELF.Binary:
+        data['type'] = "ELF"
+        #TODO: parse sections
+    elif type(binary) is lief.MachO.Binary:
+        data['type'] = "Mach-O"
+        #TODO: parse sections
+    elif type(binary) is lief.PE.Binary:
         data['type'] = "PE"
         data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
         ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
         data['entrypoint'] = int(ep // data['chunksize'])
+    else:
+        raise TypeError("Unsupported executable format")
     ep_section = [s.name for s in binary.sections if s.offset <= ep <= s.offset + s.size][0]
+    # convert to 3-tuple (real EP, EP, section of real EP)
     data['entrypoint'] = (data['entrypoint'], ep, ep_section)
     for section in binary.sections:
         name = section.name.strip("\x00") or "<empty>"
@@ -191,7 +202,7 @@ def characteristics(executable, n_samples=2048, window_size=lambda s: 2*s):
         data['sections'].append(__d(int(min(start, max_end - MIN_ZONE_WIDTH)), int(max_end), name))
     last = data['sections'][-1][1]
     if last < n_samples:
-        data['sections'].append(__d(int(last), int(n_samples), "Unallocated"))
+        data['sections'].append(__d(int(last), int(n_samples), "Overlay"))
     return data
 
 
@@ -261,7 +272,7 @@ def is_packed(entropies, average, threshold_average_entropy, threshold_highest_e
     return c1 and c2
 
 
-def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, sublabel=None):
+def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, sublabel=None, scale=False, **kwargs):
     """ Plot input binaries' characteristics on a same figure.
     
     :param img:        destination filename for the created figure
@@ -270,6 +281,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     :param dpi:        resolution of the created figure
     :param labels:     list of custom labels to be used for the binaries (can be lambda-based)
     :param sublabel:   static or lambda-based sublabel for display under the label
+    :param kwargs:     keyword-arguments for characteristics(...) ; n_samples and window_size
     """
     if len(filenames) == 0:
         raise ValueError("No executable to plot")
@@ -278,9 +290,16 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     fig.set_size_inches(10, nf+1)
     fig.tight_layout(pad=1.5)
     objs[0].axis("off")
+    ref_size, ref_n = None, kwargs.get('n_samples', N_SAMPLES)
     for i, filepath in enumerate(filenames):
-        data, obj, filename = characteristics(filepath), objs[i+1], os.path.basename(filepath)
+        if scale and ref_size:
+            with open(filepath, "rb") as f:
+                size = os.fstat(f.fileno()).st_size
+            kwargs['n_samples'] = int(ref_n * size / ref_size)
+        data, obj, filename = characteristics(filepath, **kwargs), objs[i+1], os.path.basename(filepath)
         n, label = len(data['entropy']), None
+        if not ref_size:
+            ref_size = data['size']
         obj.axis("off")
         # set the main title for the whole figure
         if i == 0:
@@ -327,7 +346,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                 color_cursor += 1
             # draw the section
             obj.fill_between(x, 0, 1, facecolor=c, alpha=.2)
-            if name not in ["Headers", "Unallocated"]:
+            if name not in ["Headers", "Overlay"]:
                 if last is None or (start + end) // 2 - (last[0] + last[1]) // 2 > n // 12:
                     pos_y = N_TOP
                 else:

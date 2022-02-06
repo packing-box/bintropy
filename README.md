@@ -88,7 +88,8 @@ Example of generated figures:
 You may also like these:
 
 - [Awesome Executable Packing](https://github.com/dhondta/awesome-executable-packing): A curated list of awesome resources related to executable packing.
-- [Dataset of packed PE files](https://github.com/dhondta/dataset-packed-pe): Curated dataset of PE samples packed with 19 different packers.
+- [Dataset of packed ELF files](https://github.com/dhondta/dataset-packed-elf): Dataset of ELF samples packed with many different packers.
+- [Dataset of packed PE files](https://github.com/dhondta/dataset-packed-pe): Dataset of PE samples packed with many different packers.
 - [Docker Packing Box](https://github.com/dhondta/docker-packing-box): Docker image gathering packers and tools for making datasets of packed executables.
 - [PEiD](https://github.com/dhondta/peid): Python implementation of the Packed Executable iDentifier (PEiD).
 - [PyPackerDetect](https://github.com/dhondta/PyPackerDetect): Packing detection tool for PE files.
