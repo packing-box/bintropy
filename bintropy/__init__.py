@@ -11,18 +11,38 @@ __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRES
 
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
 
+# https://matplotlib.org/2.0.2/examples/color/named_colors.html
 COLORS = {
-    'Headers': "black",
-    'Overlay': "lightgray",
-    #TODO: these colors fit for a small number of sections, such as in a PE file ; it won't be enough for an ELF file
-    #       that can have even more segments
-    'other':   ["darksalmon", "peru", "gold", "plum", "orchid", "sandybrown", "darkkhaki", "purple", "crimson"],
-    '.bss':    "steelblue",         # block started by symbol (uninitialized data)
-    '.data':   "skyblue",
-    '.rdata':  "cornflowerblue",
-    '.rsrc':   "royalblue",         # resources
-    '.text':   "darkseagreen",
-    '.tls':    "skyblue",           #thread-local storage
+    None:       ["salmon", "gold", "plum", "darkkhaki", "orchid", "sandybrown", "purple", "khaki", "peru", "thistle"],
+    'Headers':  "black",
+    'Overlay':  "lightgray",
+    # common
+    'text':     "darkseagreen",   # code
+    'data':     "skyblue",        # initialized data
+    'bss':      "steelblue",      # block started by symbol (uninitialized data)
+    # PE
+    'rdata':    "cornflowerblue", # read-only data
+    'rsrc':     "royalblue",      # resources
+    'tls':      "slateblue",      # thread-local storage
+    'edata':    "turquoise",      # export data
+    'idata':    "darkturquoise",  # import data
+    'reloc':    "crimson",        # base relocations table
+    # ELF
+    'init':     "lightgreen",     # runtime initialization instructions
+    'fini':     "yellowgreen",    # process termination code
+    'data1':    "skyblue",        # initialized data (2)
+    'rodata':   "cornflowerblue", # read-only data
+    'rodata1':  "cornflowerblue", # read-only data (2)
+    'symtab':   "royalblue",      # symbol table
+    'strtab':   "navy",           # string table
+    'strtab1':  "navy",           # string table (2)
+    'dynamic':  "crimson",        # dynamic linking information
+    # Mach-O
+    'cstring':  "navy",           # string table
+    'const':    "cornflowerblue", # read-only data
+    'literal4': "blue",           # 4-byte literal values
+    'literal4': "mediumblue",     # 8-byte literal values
+    'common':   "royalblue",      # uninitialized imported symbol definitions
 }
 MIN_ZONE_WIDTH = 5  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
                     #  if it is far smaller than the other sections)
@@ -175,7 +195,6 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
         raise TypeError("Not an executable")
     # entry point (EP)
     ep = binary.entrypoint
-    data['entrypoint'] = int(ep // data['chunksize'])
     # sections
     __d = lambda s, e, n: (s, e, n, statistics.mean(data['entropy'][s:e+1]))
     if type(binary) is lief.ELF.Binary:
@@ -188,9 +207,9 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
         data['type'] = "PE"
         data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
         ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
-        data['entrypoint'] = int(ep // data['chunksize'])
     else:
         raise TypeError("Unsupported executable format")
+    data['entrypoint'] = int(ep // data['chunksize'])
     ep_section = [s.name for s in binary.sections if s.offset <= ep <= s.offset + s.size][0]
     # convert to 3-tuple (real EP, EP, section of real EP)
     data['entrypoint'] = (data['entrypoint'], ep, ep_section)
@@ -340,9 +359,10 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
             x = range(start, min(n, end + 1))
             # select the right color first
             try:
-                c = COLORS[name]
+                c = COLORS[name.lower().lstrip("._").rstrip("\x00")]
             except KeyError:
-                c = COLORS['other'][color_cursor]
+                co = COLORS[None]
+                c = co[color_cursor % len(co)]
                 color_cursor += 1
             # draw the section
             obj.fill_between(x, 0, 1, facecolor=c, alpha=.2)
