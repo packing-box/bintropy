@@ -14,8 +14,9 @@ __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
 # https://matplotlib.org/2.0.2/examples/color/named_colors.html
 COLORS = {
     None:       ["salmon", "gold", "plum", "darkkhaki", "orchid", "sandybrown", "purple", "khaki", "peru", "thistle"],
-    'Headers':  "black",
-    'Overlay':  "lightgray",
+    'headers':  "black",
+    'overlay':  "lightgray",
+    '<undef>':  "lightgray",
     # common
     'text':     "darkseagreen",   # code
     'data':     "skyblue",        # initialized data
@@ -193,32 +194,34 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
     os.close(null_fd)
     if binary is None:
         raise TypeError("Not an executable")
+    data['type'] = "ELF" if type(binary) is lief.ELF.Binary else \
+                   "Mach-O" if type(binary) is lief.MachO.Binary else \
+                   "PE" if type(binary) is lief.PE.Binary else None
+    if data['type'] is None:
+        raise TypeError("Unsupported executable format")
     # entry point (EP)
-    ep = binary.entrypoint
+    ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
     # sections
     __d = lambda s, e, n: (s, e, n, statistics.mean(data['entropy'][s:e+1]))
-    if type(binary) is lief.ELF.Binary:
-        data['type'] = "ELF"
-        #TODO: parse sections
-    elif type(binary) is lief.MachO.Binary:
-        data['type'] = "Mach-O"
-        #TODO: parse sections
-    elif type(binary) is lief.PE.Binary:
-        data['type'] = "PE"
-        data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
-        ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
-    else:
-        raise TypeError("Unsupported executable format")
+    data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
     data['entrypoint'] = int(ep // data['chunksize'])
-    ep_section = [s.name for s in binary.sections if s.offset <= ep <= s.offset + s.size][0]
+    ep_section = binary.section_from_rva(binary.optional_header.addressof_entrypoint).name.rstrip("\x00")
     # convert to 3-tuple (real EP, EP, section of real EP)
     data['entrypoint'] = (data['entrypoint'], ep, ep_section)
-    for section in binary.sections:
+    for section in sorted(binary.sections, key=lambda x: x.offset):
         name = section.name.strip("\x00") or "<empty>"
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
         data['sections'].append(__d(int(min(start, max_end - MIN_ZONE_WIDTH)), int(max_end), name))
+    # fill in undefined sections
+    prev_end = None
+    for i, t in enumerate(data['sections'][:]):
+        start, end, name, _ = t
+        if prev_end and prev_end < start:
+            data['sections'].insert(i, __d(prev_end, start, "<undef>"))
+        prev_end = end
+    # add overlay
     last = data['sections'][-1][1]
     if last < n_samples:
         data['sections'].append(__d(int(last), int(n_samples), "Overlay"))
@@ -388,6 +391,8 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     h, l = objs[1].get_legend_handles_labels()
     plt.figlegend(h, l, loc="lower center", ncol=2)
     img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
-    plt.savefig(img_name, img_format=img_format, dpi=dpi, bbox_inches="tight")
+    # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
+    #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
+    plt.savefig(img_name + "." + img_format, img_format=img_format, dpi=dpi, bbox_inches="tight")
     return plt
 
