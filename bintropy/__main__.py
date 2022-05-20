@@ -63,31 +63,25 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true", help="display debug information (default: False)")
     parser.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
                                                                   "the half are zeros (default: False)")
-    parser.add_argument("--blocksize", dest="bsize", type=Positive(int), default=256,
+    parser.add_argument("--blocksize", type=Positive(int), default=256,
                         help="block size to be considered (default: 256)")
     parser.add_argument("--do-not-decide", dest="decide", action="store_false",
                         help="do not decide if packed, return entropy values (default: decide)")
-    parser.add_argument("--threshold-average-entropy", dest="threshold1", type=Positive(float, int),
+    parser.add_argument("--threshold-average-entropy", type=Positive(float, int),
                         help="threshold for the average entropy")
-    parser.add_argument("--threshold-highest-entropy", dest="threshold2", type=Positive(float, int),
+    parser.add_argument("--threshold-highest-entropy", type=Positive(float, int),
                         help="threshold for the highest entropy")
     args = parser.parse_args()
     logging.basicConfig()
     args.logger = logging.getLogger("bintropy")
     args.logger.setLevel([logging.INFO, logging.DEBUG][args.verbose])
+    args.ignore_half_block_zeros = not args.all_blocks
     code = 0
     # execute the tool
     if args.benchmark:
         t1 = perf_counter()
     try:
-        r = bintropy(args.path,
-                     args.mode,
-                     args.bsize,
-                     not args.all_blocks,
-                     args.decide,
-                     args.threshold1,
-                     args.threshold2,
-                     args.logger)
+        r = bintropy(args.path, **vars(args))
         if r is None:
             raise Exception("no result")
         dt = str(perf_counter() - t1) if args.benchmark else ""
@@ -98,7 +92,7 @@ def main():
             r.append(dt)
         print(" ".join(r))
         if args.plot:
-            plot(args.path)
+            plot(args.path, **vars(args))
     except Exception as e:
         if str(e) != "no result":
             args.logger.exception(e)

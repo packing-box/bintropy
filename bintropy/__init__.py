@@ -53,9 +53,9 @@ SUBLABELS = {
     'size':        lambda d: "Size = %s" % _human_readable_size(d['size'], 1),
     'size-ep':     lambda d: "Size = %s\nEP at 0x%.8x in %s" % \
                              (_human_readable_size(d['size'], 1), d['entrypoint'][1], d['entrypoint'][2]),
-    'size-ep-ent': lambda d: "Size = %s\nEP at 0x%.8x in %s\nAverage entropy: %.2f" % \
+    'size-ep-ent': lambda d: "Size = %s\nEP at 0x%.8x in %s\nAverage entropy: %.2f\nOverall entropy: %.2f" % \
                              (_human_readable_size(d['size'], 1), d['entrypoint'][1], d['entrypoint'][2],
-                              statistics.mean(d['entropy']) * 8),
+                              statistics.mean(d['entropy']) * 8, d['entropy*']),
 }
 # IMPORTANT NOTE: these values were computed while experimenting with PE files and with the first mode of operation ;
 #                  this may have an impact on typical values for other executable formats
@@ -65,6 +65,8 @@ THRESHOLDS = {
     #TODO: get average and highest entropy values for lief.EXE_FORMATS.ELF
     #TODO: get average and highest entropy values for lief.EXE_FORMATS.MACHO
 }
+
+plt.rcParams['font.family'] = "serif"
 
 
 def _human_readable_size(size, precision=0):
@@ -77,7 +79,7 @@ def _human_readable_size(size, precision=0):
 
 
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
-             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None):
+             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, **kwargs):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
     :param executable:                path to the executable to be analyzed
@@ -159,7 +161,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
         return is_packed(e2, e_avg2, _t1, _t2, logger) if decide else (e2, e_avg2)
 
 
-def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
+def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, **kwargs):
     """ Compute executable's desired characteristics, including:
         - 'x' samples of entropy using a sliding window of size 'window_size'
         - sections' bounds (reduced according to the 'x' samples)
@@ -173,12 +175,18 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
     data = {'name': os.path.basename(executable), 'entropy': [], 'sections': []}
     # compute window-based entropy
     with open(str(executable), "rb") as f:
+        data['entropy*'] = entropy(f.read())
+    with open(str(executable), "rb") as f:
         size = data['size'] = os.fstat(f.fileno()).st_size
-        step = -(-size // n_samples)
+        step = abs(size // n_samples)
         chunksize = data['chunksize'] = size / n_samples
         if isinstance(window_size, type(lambda: 0)):
             window_size = window_size(step)
-        window, winter = b"", max(step, -(-window_size // 2))
+        # ensure the window interval is at least 256, that is 2^8, because otherwise if using a too small executable,
+        #  it may get undersampled and have lower entropy values than actuel
+        window, winter = b"", max(step, abs(window_size // 2), 256)
+        # rectify the size of the window with the fixed interval
+        window_size = 2 * winter
         for i in range(n_samples+1):
             # slice the window
             new_pos, cur_pos = int((i+1)*chunksize), int(i*chunksize)
@@ -223,7 +231,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s):
         prev_end = end
     # add overlay
     last = data['sections'][-1][1]
-    if last < n_samples:
+    if last + 1 < n_samples:
         data['sections'].append(__d(int(last), int(n_samples), "Overlay"))
     return data
 
@@ -238,7 +246,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
     """
     e, l = [], len(something)
     if l == 0:
-        return
+        return 0.
     bs = blocksize or l
     n_blocks, n_ignored = math.ceil(float(l) / bs), 0
     for i in range(0, l, bs):
@@ -334,24 +342,25 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                 label = label(data)
         except:
             pass
+        ref_point = .55
         if sublabel:
             if isinstance(sublabel, str):
                 sublabel = SUBLABELS.get(sublabel)
             sl = sublabel(data) if isinstance(sublabel, type(lambda: 0)) else None
             if sl:
-                nl, y_pos, f_color = len(sl.split("\n")), .47, "black"
+                nl, y_pos, f_color = len(sl.split("\n")), ref_point, "black"
                 if label:
                     f_size, f_color = "x-small" if nl <= 2 else "xx-small", "gray"
-                    y_pos = max(0., .46 - nl * [.16, .12, .09][min(3, nl)-1])
+                    y_pos = max(0., ref_point - nl * [.16, .12, .09, .08][min(4, nl)-1])
                 else:
                     #y_pos -= nl * [0., .16, .3][min(3, nl)-1]
                     f_size = ["medium", "small", "x-small"][min(3, nl)-1]
                 obj.text(s=sl, x=-420., y=y_pos, fontsize=f_size, color=f_color, ha="left", va="center")
         if label:
-            y_pos = .46
+            y_pos = ref_point
             if sublabel:
                 nl = len(sl.split("\n"))
-                y_pos = min(1., .46 + nl * [.16, .12, .09][min(3, nl)-1])
+                y_pos = min(1., ref_point + nl * [.16, .12, .09, .08][min(4, nl)-1])
             obj.text(s=label, x=-420., y=y_pos, fontsize="large", ha="left", va="center")
         # display the entry point
         obj.vlines(x=data['entrypoint'][0], ymin=0, ymax=1, color="r", zorder=11).set_label("Entry point")
