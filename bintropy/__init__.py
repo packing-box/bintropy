@@ -10,6 +10,7 @@ __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRES
 
 
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
+__secname = lambda s: s.strip("\x00") or s or"<empty>"
 
 # https://matplotlib.org/2.0.2/examples/color/named_colors.html
 COLORS = {
@@ -182,8 +183,8 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
         chunksize = data['chunksize'] = size / n_samples
         if isinstance(window_size, type(lambda: 0)):
             window_size = window_size(step)
-        # ensure the window interval is at least 256, that is 2^8, because otherwise if using a too small executable,
-        #  it may get undersampled and have lower entropy values than actuel
+        # ensure the window interval is at least 256 (that is 2^8 ; with a 'security' factor of 2)) because otherwise if
+        #  using a too small executable, it may get undersampled and have lower entropy values than actual
         window, winter = b"", max(step, abs(window_size // 2), 256)
         # rectify the size of the window with the fixed interval
         window_size = 2 * winter
@@ -215,9 +216,9 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     data['entrypoint'] = int(ep // data['chunksize'])
     ep_section = binary.section_from_rva(binary.optional_header.addressof_entrypoint).name.rstrip("\x00")
     # convert to 3-tuple (real EP, EP, section of real EP)
-    data['entrypoint'] = (data['entrypoint'], ep, ep_section)
+    data['entrypoint'] = (data['entrypoint'], ep, __secname(ep_section))
     for section in sorted(binary.sections, key=lambda x: x.offset):
-        name = section.name.strip("\x00") or "<empty>"
+        name = __secname(section.name)
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
@@ -342,7 +343,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                 label = label(data)
         except:
             pass
-        ref_point = .55
+        ref_point = .65
         if sublabel:
             if isinstance(sublabel, str):
                 sublabel = SUBLABELS.get(sublabel)
@@ -371,7 +372,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
             x = range(start, min(n, end + 1))
             # select the right color first
             try:
-                c = COLORS[name.lower().lstrip("._").rstrip("\x00")]
+                c = COLORS[name.lower().lstrip("._").strip("\x00\n ")]
             except KeyError:
                 co = COLORS[None]
                 c = co[color_cursor % len(co)]
