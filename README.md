@@ -1,11 +1,9 @@
-<p align="center"><img src="https://github.com/dhondta/bintropy/raw/main/docs/logo.png"></p>
-<h1 align="center">Bintropy <a href="https://twitter.com/intent/tweet?text=Bintropy%20-%20Python%20implementation%20of%20the%20related%20analysis%20tool%20for%20packing%20detection%20based%20on%20entropy.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fdhondta%2fbintropy%0D%0A&hashtags=python,pe,lief,elf,macho,entropy,packer,packingdetection"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
+<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/logo.png"></p>
+<h1 align="center">Bintropy <a href="https://twitter.com/intent/tweet?text=Bintropy%20-%20Python%20implementation%20of%20the%20related%20analysis%20tool%20for%20packing%20detection%20based%20on%20entropy.%0D%0Ahttps%3a%2f%2fgithub%2ecom%2fpacking-box%2fbintropy%0D%0A&hashtags=python,pe,lief,elf,macho,entropy,packer,packingdetection"><img src="https://img.shields.io/badge/Tweet--lightgrey?logo=twitter&style=social" alt="Tweet" height="20"/></a></h1>
 <h3 align="center">Detect packers on PE/ELF/Mach-O files using entropy.</h3>
 
 [![PyPi](https://img.shields.io/pypi/v/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
-[![Build Status](https://travis-ci.com/dhondta/bintropy.svg?branch=main)](https://travis-ci.com/dhondta/bintropy)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
-[![Requirements Status](https://requires.io/github/dhondta/bintropy/requirements/?branch=main)](https://requires.io/github/dhondta/bintropy/requirements/?branch=main)
 [![Known Vulnerabilities](https://snyk.io/test/github/dhondta/bintropy/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/bintropy?targetFile=requirements.txt)
 [![DOI](https://zenodo.org/badge/382563382.svg)](https://zenodo.org/badge/latestdoi/382563382)
 [![License](https://img.shields.io/pypi/l/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
@@ -80,25 +78,25 @@ $ bintropy binary --plot
 
 Example of generated figures:
 
-<p align="center"><img src="https://github.com/dhondta/bintropy/raw/main/docs/example-not-packed.png"></p>
-<p align="center"><img src="https://github.com/dhondta/bintropy/raw/main/docs/example-packed.png"></p>
+<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/example-not-packed.png"></p>
+<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/example-packed.png"></p>
 
 ## :star: Related Projects
 
 You may also like these:
 
-- [Awesome Executable Packing](https://github.com/dhondta/awesome-executable-packing): A curated list of awesome resources related to executable packing.
-- [Dataset of packed ELF files](https://github.com/dhondta/dataset-packed-elf): Dataset of ELF samples packed with many different packers.
-- [Dataset of packed PE files](https://github.com/dhondta/dataset-packed-pe): Dataset of PE samples packed with many different packers.
-- [Docker Packing Box](https://github.com/dhondta/docker-packing-box): Docker image gathering packers and tools for making datasets of packed executables.
-- [PEiD](https://github.com/dhondta/peid): Python implementation of the Packed Executable iDentifier (PEiD).
-- [PyPackerDetect](https://github.com/dhondta/PyPackerDetect): Packing detection tool for PE files.
+- [Awesome Executable Packing](https://github.com/packing-box/awesome-executable-packing): A curated list of awesome resources related to executable packing.
+- [Dataset of packed ELF files](https://github.com/packing-box/dataset-packed-elf): Dataset of ELF samples packed with many different packers.
+- [Dataset of packed PE files](https://github.com/packing-box/dataset-packed-pe): Dataset of PE samples packed with many different packers.
+- [Docker Packing Box](https://github.com/packing-box/docker-packing-box): Docker image gathering packers and tools for making datasets of packed executables.
+- [PEiD](https://github.com/packing-box/peid): Python implementation of the Packed Executable iDentifier (PEiD).
+- [PyPackerDetect](https://github.com/packing-box/PyPackerDetect): Packing detection tool for PE files.
 
 
 ## :clap:  Supporters
 
-[![Stargazers repo roster for @dhondta/bintropy](https://reporoster.com/stars/dark/dhondta/bintropy)](https://github.com/dhondta/bintropy/stargazers)
+[![Stargazers repo roster for @packing-box/bintropy](https://reporoster.com/stars/dark/packing-box/bintropy)](https://github.com/packing-box/bintropy/stargazers)
 
-[![Forkers repo roster for @dhondta/bintropy](https://reporoster.com/forks/dark/dhondta/bintropy)](https://github.com/dhondta/bintropy/network/members)
+[![Forkers repo roster for @packing-box/bintropy](https://reporoster.com/forks/dark/packing-box/bintropy)](https://github.com/packing-box/bintropy/network/members)
 
 <p align="center"><a href="#"><img src="https://img.shields.io/badge/Back%20to%20top--lightgrey?style=social" alt="Back to top" height="20"/></a></p>
