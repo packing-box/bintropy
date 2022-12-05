@@ -403,6 +403,9 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
-    plt.savefig(img_name + "." + img_format, img_format=img_format, dpi=dpi, bbox_inches="tight")
+    try:
+        plt.savefig(img_name + "." + img_format, img_format=img_format, dpi=dpi, bbox_inches="tight")
+    except:  # format argument renamed in further versions of pyplot
+        plt.savefig(img_name + "." + img_format, format=img_format, dpi=dpi, bbox_inches="tight")
     return plt
 
