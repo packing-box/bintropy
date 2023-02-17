@@ -4,7 +4,7 @@
 
 [![PyPi](https://img.shields.io/pypi/v/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
-[![Known Vulnerabilities](https://snyk.io/test/github/dhondta/bintropy/badge.svg?targetFile=requirements.txt)](https://snyk.io/test/github/dhondta/bintropy?targetFile=requirements.txt)
+[![Build Status](https://github.com/packing-box/bintropy/actions/workflows/python-package.yml/badge.svg)](https://github.com/packing-box/bintropy/actions/workflows/python-package.yml)
 [![DOI](https://zenodo.org/badge/382563382.svg)](https://zenodo.org/badge/latestdoi/382563382)
 [![License](https://img.shields.io/pypi/l/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
 
