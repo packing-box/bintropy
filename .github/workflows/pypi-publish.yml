@@ -7,10 +7,8 @@ env:
 
 on:
   push:
-    branches:
-    - main
     paths:
-    - '**/VERSION.txt'
+    - 'src/**/VERSION.txt'
   workflow_run:
     workflows: ["build"]
     types: [completed]
