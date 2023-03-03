@@ -316,26 +316,29 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     """
     if len(filenames) == 0:
         raise ValueError("No executable to plot")
+    lloc, title = kwargs.get('legend_location', "lower center"), not kwargs.get('no_title', False)
+    lloc_side = lloc.split()[1] in ["left", "right"]
     nf, N_TOP, N_TOP2, N_BOT, N_BOT2 = len(filenames), 1.15, 1.37, -.15, -.37
-    fig, objs = plt.subplots(nf+1, sharex=True)
-    fig.set_size_inches(10, nf+1)
+    fig, objs = plt.subplots(nf+[0, 1][title], sharex=True)
+    fig.set_size_inches(10, nf+[0, 1][title])
     fig.tight_layout(pad=1.5)
-    objs[0].axis("off")
+    (objs[0] if nf+[0, 1][title] > 1 else objs).axis("off")
     ref_size, ref_n = None, kwargs.get('n_samples', N_SAMPLES)
     for i, filepath in enumerate(filenames):
         if scale and ref_size:
             with open(filepath, "rb") as f:
                 size = os.fstat(f.fileno()).st_size
             kwargs['n_samples'] = int(ref_n * size / ref_size)
-        data, obj, filename = characteristics(filepath, **kwargs), objs[i+1], os.path.basename(filepath)
+        obj = objs[i+[0, 1][title]] if nf+[0, 1][title] > 1 else objs
+        data, filename = characteristics(filepath, **kwargs), os.path.basename(filepath)
         n, label = len(data['entropy']), None
         if not ref_size:
             ref_size = data['size']
         obj.axis("off")
         # set the main title for the whole figure
-        if i == 0:
+        if i == 0 and title:
             fig.suptitle("Entropy per section of %s file: %s" % (data['type'], filename), x=[.6, .5][labels is None],
-                         y=1.-.6/(nf+1), ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
+                         y=1.-.6/(nf+[0, 1][title]), ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
         # set the label and sublabel and display them
         try:
             label = labels[i]
@@ -354,7 +357,6 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                     f_size, f_color = "x-small" if nl <= 2 else "xx-small", "gray"
                     y_pos = max(0., ref_point - nl * [.16, .12, .09, .08][min(4, nl)-1])
                 else:
-                    #y_pos -= nl * [0., .16, .3][min(3, nl)-1]
                     f_size = ["medium", "small", "x-small"][min(3, nl)-1]
                 obj.text(s=sl, x=-420., y=y_pos, fontsize=f_size, color=f_color, ha="left", va="center")
         if label:
@@ -397,9 +399,10 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
             l = obj.hlines(y=statistics.mean(data['entropy'][start:end+1]), xmin=x[0], xmax=x[-1], color="black",
                            linestyle=(0, (5, 5)), linewidth=.5)
         l.set_label("Average entropy of section")
-    plt.subplots_adjust(left=[.32, .02][labels is None], right=1.02, bottom=.5/max(1.75, nf))
-    h, l = objs[1].get_legend_handles_labels()
-    plt.figlegend(h, l, loc="lower center", ncol=2)
+    plt.subplots_adjust(left=[.15, .02][labels is None and sublabel is None], right=[1.02, .82][lloc_side],
+                        bottom=.5/max(1.75, nf))
+    h, l = (objs[[0, 1][title]] if nf+[0, 1][title] > 1 else objs).get_legend_handles_labels()
+    plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else 2, prop={'size': 7})
     img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
