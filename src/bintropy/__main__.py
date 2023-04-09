@@ -2,7 +2,7 @@
 import logging
 from argparse import ArgumentParser, RawTextHelpFormatter
 from ast import literal_eval
-from os.path import exists
+from os.path import exists, isfile
 from time import perf_counter
 
 from .__info__ import __author__, __copyright__, __email__, __license__, __reference__, __source__, __version__
@@ -16,6 +16,8 @@ lieflog.setLevel(logging.CRITICAL)
 def valid_file(path):
     if not exists(path):
         raise ValueError("input file does not exist")
+    if not isfile(path):
+        raise ValueError("input is not a file")
     return path
 
 

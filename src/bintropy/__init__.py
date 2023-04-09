@@ -10,7 +10,7 @@ __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRES
 
 
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
-__secname = lambda s: s.strip("\x00") or s or"<empty>"
+__secname = lambda s: s.strip("\x00") or s or "<empty>"
 
 # https://matplotlib.org/2.0.2/examples/color/named_colors.html
 COLORS = {
@@ -46,7 +46,7 @@ COLORS = {
     'literal4': "mediumblue",     # 8-byte literal values
     'common':   "royalblue",      # uninitialized imported symbol definitions
 }
-MIN_ZONE_WIDTH = 5  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
+MIN_ZONE_WIDTH = 3  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
                     #  if it is far smaller than the other sections)
 N_SAMPLES = 2048
 SUBLABELS = {
@@ -68,6 +68,26 @@ THRESHOLDS = {
 }
 
 plt.rcParams['font.family'] = "serif"
+
+
+def _get_ep_and_section(binary):
+    """ Helper for computing the entry point and finding its section for each supported format.
+    :param binary: LIEF-parsed binary object
+    :return:       (ep_file_offset, name_of_ep_section)
+    """
+    btype = str(type(binary)).split(".")[1]
+    try:
+        if btype in ["ELF", "MachO"]:
+            ep = binary.virtual_address_to_offset(binary.entrypoint)
+            ep_section = binary.section_from_offset(ep)
+        elif btype == "PE":
+            ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
+            ep_section = binary.section_from_rva(binary.optional_header.addressof_entrypoint)
+        else:
+            raise OSError("Unknown format")
+        return ep, ep_section.name
+    except (AttributeError, lief.not_found, lief.conversion_error):
+        return None, None
 
 
 def _human_readable_size(size, precision=0):
@@ -209,26 +229,27 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     os.close(null_fd)
     if binary is None:
         raise TypeError("Not an executable")
-    data['type'] = "ELF" if type(binary) is lief.ELF.Binary else \
-                   "Mach-O" if type(binary) is lief.MachO.Binary else \
-                   "PE" if type(binary) is lief.PE.Binary else None
-    if data['type'] is None:
-        raise TypeError("Unsupported executable format")
+    data['type'] = str(type(binary)).split(".")[1]
     # entry point (EP)
-    ep = binary.rva_to_offset(binary.optional_header.addressof_entrypoint)
+    ep, ep_section = _get_ep_and_section(binary)
+    # convert to 3-tuple (EP offset on plot, EP file offset, section name containing EP)
+    data['entrypoint'] = None if ep is None else (int(ep // data['chunksize']), ep, __secname(ep_section))
     # sections
-    __d = lambda s, e, n: (s, e, n, statistics.mean(data['entropy'][s:e+1]))
-    data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sizeof_headers // chunksize)), "Headers")]
-    data['entrypoint'] = int(ep // data['chunksize'])
-    ep_section = binary.section_from_rva(binary.optional_header.addressof_entrypoint).name.rstrip("\x00")
-    # convert to 3-tuple (real EP, EP, section of real EP)
-    data['entrypoint'] = (data['entrypoint'], ep, __secname(ep_section))
-    for section in sorted(binary.sections, key=lambda x: x.offset):
+    __d = lambda s, e, n: (int(s), int(e), n, statistics.mean(data['entropy'][int(s):int(e)+1]))
+    data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sections[0].offset // chunksize)), "Headers")] \
+                       if len(binary.sections) > 0 else []
+    for section in binary.sections:
         name = __secname(section.name)
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
         data['sections'].append(__d(int(min(start, max_end - MIN_ZONE_WIDTH)), int(max_end), name))
+    # adjust the entry point (be sure that its position on the plot is within the EP section)
+    if ep:
+        ep_pos, _, ep_sec_name = data['entrypoint']
+        for s, e, name, m in data['sections']:
+            if name == ep_sec_name:
+                data['entrypoint'] = (min(max(ep_pos, s), e), ep, ep_sec_name)
     # fill in undefined sections
     prev_end = None
     for i, t in enumerate(data['sections'][:]):
@@ -236,10 +257,16 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
         if prev_end and prev_end < start:
             data['sections'].insert(i, __d(prev_end, start, "<undef>"))
         prev_end = end
-    # add overlay
-    last = data['sections'][-1][1]
-    if last + 1 < n_samples:
-        data['sections'].append(__d(int(last), int(n_samples), "Overlay"))
+    if len(binary.sections) > 0:
+        last = data['sections'][-1][1]
+        if data['type'] == "ELF":
+            # add section header table
+            sh_size = binary.header.section_header_size * binary.header.numberof_sections
+            data['sections'].append(__d(int(last), int(last) + sh_size // chunksize, "Header"))
+        elif data['type'] == "PE":
+            # add overlay
+            if last + 1 < n_samples:
+                data['sections'].append(__d(int(last), int(n_samples), "Overlay"))
     return data
 
 
@@ -353,7 +380,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
         except:
             pass
         ref_point = .65
-        if sublabel:
+        if sublabel and not (isinstance(sublabel, str) and "ep" in sublabel and data['entrypoint'] is None):
             if isinstance(sublabel, str):
                 sublabel = SUBLABELS.get(sublabel)
             sl = sublabel(data) if isinstance(sublabel, type(lambda: 0)) else None
@@ -372,9 +399,10 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                 y_pos = min(1., ref_point + nl * [.16, .12, .09, .08][min(4, nl)-1])
             obj.text(s=label, x=-420., y=y_pos, fontsize="large", ha="left", va="center")
         # display the entry point
-        obj.vlines(x=data['entrypoint'][0], ymin=0, ymax=1, color="r", zorder=11).set_label("Entry point")
-        obj.text(data['entrypoint'][0], -.15, "______", c="r", ha="center", rotation=90, size=.8,
-                 bbox={'boxstyle': "rarrow", 'fc': "r", 'ec': "r", 'lw': 1})
+        if data['entrypoint']:
+            obj.vlines(x=data['entrypoint'][0], ymin=0, ymax=1, color="r", zorder=11).set_label("Entry point")
+            obj.text(data['entrypoint'][0], -.15, "______", c="r", ha="center", rotation=90, size=.8,
+                     bbox={'boxstyle': "rarrow", 'fc': "r", 'ec': "r", 'lw': 1})
         color_cursor, last = 0, None
         for start, end, name, avg_ent in data['sections']:
             x = range(start, min(n, end + 1))
@@ -404,11 +432,15 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
             obj.fill_between(x, [0] * len(x), data['entropy'][start:end+1], facecolor=c)
             l = obj.hlines(y=statistics.mean(data['entropy'][start:end+1]), xmin=x[0], xmax=x[-1], color="black",
                            linestyle=(0, (5, 5)), linewidth=.5)
-        l.set_label("Average entropy of section")
+        if len(data['sections']) > 0:
+            l.set_label("Average entropy of section")
+        else:
+            obj.text(.5, ref_point, "Could not parse sections", fontsize=16, color="red", ha="center", va="center")
     plt.subplots_adjust(left=[.15, .02][labels is None and sublabel is None], right=[1.02, .82][lloc_side],
                         bottom=.5/max(1.75, nf))
     h, l = (objs[[0, 1][title]] if nf+[0, 1][title] > 1 else objs).get_legend_handles_labels()
-    plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else 2, prop={'size': 7})
+    if len(h) > 0:
+        plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else 2, prop={'size': 7})
     img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
