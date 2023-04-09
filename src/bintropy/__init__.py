@@ -119,7 +119,13 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
                 for i, j in enumerate(e[0]):
                     msg += ("\n    #{: <%s}: {}" % iw).format(i + 1, "-" if j is None else j)
             __log(logger, msg)
-        return is_packed(e[0], e[1], _t1, _t2, logger) if decide else (max([x for x in e[0] if x is not None]), e[1])
+        if decide:
+            return is_packed(e[0], e[1], _t1, _t2, logger)
+        else:
+            try:
+                return max([x for x in e[0] if x is not None]), e[1]
+            except ValueError:  # occurs when ignore_half_block_zeros=True and all the blocks have more than half of
+                return 0., 0.   #  their bytes being zeros
     # SECOND AND THIRD MODES: compute a weighted entropy of all the sections or segments of the executable
     else:
         def _handle(n, d):
