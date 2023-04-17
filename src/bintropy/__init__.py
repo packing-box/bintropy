@@ -1,7 +1,6 @@
 # -*- coding: UTF-8 -*-
 import lief
 import math
-import matplotlib.pyplot as plt
 import os
 import statistics
 
@@ -9,6 +8,7 @@ import statistics
 __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRESHOLDS"]
 
 
+__btype = lambda b: str(type(b)).split(".")[2]
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
 __secname = lambda s: s.strip("\x00") or s or "<empty>"
 
@@ -67,15 +67,13 @@ THRESHOLDS = {
     #TODO: get average and highest entropy values for lief.EXE_FORMATS.MACHO
 }
 
-plt.rcParams['font.family'] = "serif"
-
 
 def _get_ep_and_section(binary):
     """ Helper for computing the entry point and finding its section for each supported format.
     :param binary: LIEF-parsed binary object
     :return:       (ep_file_offset, name_of_ep_section)
     """
-    btype = str(type(binary)).split(".")[2]
+    btype = __btype(binary)
     try:
         if btype in ["ELF", "MachO"]:
             ep = binary.virtual_address_to_offset(binary.entrypoint)
@@ -225,7 +223,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     os.close(null_fd)
     if binary is None:
         raise TypeError("Not an executable")
-    data['type'] = str(type(binary)).split(".")[1]
+    data['type'] = __btype(binary)
     # entry point (EP)
     ep, ep_section = _get_ep_and_section(binary)
     # convert to 3-tuple (EP offset on plot, EP file offset, section name containing EP)
@@ -343,6 +341,8 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     :param sublabel:   static or lambda-based sublabel for display under the label
     :param kwargs:     keyword-arguments for characteristics(...) ; n_samples and window_size
     """
+    import matplotlib.pyplot as plt
+    plt.rcParams['font.family'] = "serif"
     if len(filenames) == 0:
         raise ValueError("No executable to plot")
     lloc, title = kwargs.get('legend_location', "lower center"), not kwargs.get('no_title', False)
