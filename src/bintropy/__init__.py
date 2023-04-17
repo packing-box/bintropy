@@ -308,7 +308,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
             d[c] += 1
         e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in d.values()]]) or .0)
     # return the entropies per block and the average entropy of all blocks if n_blocks > 1
-    return (e, sum([n or 0 for n in e]) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 else e[0]
+    return (e, sum([n or 0 for n in e]) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 or blocksize > 0 else e[0]
 
 
 def is_packed(entropies, average, threshold_average_entropy, threshold_highest_entropy, logger=None):
