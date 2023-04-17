@@ -37,7 +37,7 @@ classifiers = [
   "Topic :: Security",
 ]
 dependencies = [
-  "lief",
+  "lief>=0.13.0",
   "matplotlib",
   "numpy>=1.23.0",
 ]

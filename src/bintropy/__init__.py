@@ -75,7 +75,7 @@ def _get_ep_and_section(binary):
     :param binary: LIEF-parsed binary object
     :return:       (ep_file_offset, name_of_ep_section)
     """
-    btype = str(type(binary)).split(".")[1]
+    btype = str(type(binary)).split(".")[2]
     try:
         if btype in ["ELF", "MachO"]:
             ep = binary.virtual_address_to_offset(binary.entrypoint)
@@ -86,7 +86,7 @@ def _get_ep_and_section(binary):
         else:
             raise OSError("Unknown format")
         return ep, ep_section.name
-    except (AttributeError, lief.not_found, lief.conversion_error):
+    except (AttributeError, lief._lief.lief_errors.not_found, lief._lief.lief_errors.conversion_error):
         return None, None
 
 
@@ -114,12 +114,8 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
     :return:                          if decide is True  => bool (whether the input executable is packed or not)
                                                    False => (average_entropy, highest_block_entropy)
     """
-    # try to parse the binary first ; capture the stderr messages from LIEF
-    tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
-    os.dup2(null_fd, 2)
+    # try to parse the binary first
     binary = lief.parse(str(executable))
-    os.dup2(tmp_fd, 2)  # restore stderr
-    os.close(null_fd)
     if binary is None:
         raise OSError("Unknown format")
     # now select the right thresholds
