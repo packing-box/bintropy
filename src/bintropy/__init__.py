@@ -2,7 +2,9 @@
 import lief
 import math
 import os
+import re
 import statistics
+from functools import lru_cache
 
 
 __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRESHOLDS"]
@@ -97,6 +99,22 @@ def _human_readable_size(size, precision=0):
     return "%.*f%s" % (precision, size, units[i])
 
 
+# dirty fix for section names requiring to get their real names from the string table (as lief does not seem to handle
+#  this in every case)
+@lru_cache
+def _real_section_names(path):
+    from subprocess import check_output
+    try:
+        names, out = [], check_output(["objdump", "-h", path]).decode()
+    except FileNotFoundError:
+        return
+    for l in out.split("\n"):
+        m = re.match(r"\s+\d+\s(.*?)\s+", l)
+        if m:
+            names.append(m.group(1))
+    return names
+
+
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
              threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, **kwargs):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
@@ -112,8 +130,9 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
     :return:                          if decide is True  => bool (whether the input executable is packed or not)
                                                    False => (average_entropy, highest_block_entropy)
     """
+    path = str(executable)
     # try to parse the binary first
-    binary = lief.parse(str(executable))
+    binary = lief.parse(path)
     if binary is None:
         raise OSError("Unknown format")
     # now select the right thresholds
@@ -122,7 +141,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
     _t1, _t2 = [_t1, thresholds[0]][_t1 is None], [_t2, thresholds[1]][_t2 is None]
     # FIRST MODE: compute the entropy of the whole executable
     if mode == 0:
-        with open(str(executable), 'rb') as f:
+        with open(path, 'rb') as f:
             exe = f.read()
         __log(logger, "Entropy (Shannon): {}".format(entropy(exe)))
         e = entropy(exe, blocksize, ignore_half_block_zeros)
@@ -149,8 +168,13 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
         e, w = {}, {}
         if mode == 1:  # per section
             if len(binary.sections) > 0:
-                for section in binary.sections:
+                for i, section in enumerate(binary.sections):
                     n, d = section.name, section.content
+                    # special case: for some executables compiled with debug information, some sections may be named
+                    #                with the format "/[N]" where N is the offset in the string table ; in this case, we
+                    #                compute the real section names
+                    if re.match(r"^\/\d+$", n) and _real_section_names(path):
+                        n = _real_section_names(path)[i]
                     _handle(n, d)
             else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
                 __log(logger, "This file has no section", "error")
@@ -193,11 +217,11 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     :param n_samples:   number of samples of entropy required
     :param window_size: window size for computing the entropy
     """
-    data = {'name': os.path.basename(executable), 'entropy': [], 'sections': []}
+    data, path = {'name': os.path.basename(executable), 'entropy': [], 'sections': []}, str(executable)
     # compute window-based entropy
-    with open(str(executable), "rb") as f:
+    with open(path, "rb") as f:
         data['entropy*'] = entropy(f.read())
-    with open(str(executable), "rb") as f:
+    with open(path, "rb") as f:
         size = data['size'] = os.fstat(f.fileno()).st_size
         step = abs(size // n_samples)
         chunksize = data['chunksize'] = size / n_samples
@@ -218,7 +242,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     # compute other characteristics using LIEF (catch warnings from stderr)
     tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
     os.dup2(null_fd, 2)
-    binary = lief.parse(str(executable))
+    binary = lief.parse(path)
     os.dup2(tmp_fd, 2)  # restore stderr
     os.close(null_fd)
     if binary is None:
@@ -232,8 +256,12 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     __d = lambda s, e, n: (int(s), int(e), n, statistics.mean(data['entropy'][int(s):int(e)+1]))
     data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sections[0].offset // chunksize)), "Headers")] \
                        if len(binary.sections) > 0 else []
-    for section in binary.sections:
+    for i, section in enumerate(binary.sections):
         name = __secname(section.name)
+        # special case: for some executables compiled with debug information, sections may be of the form "/[N]" (where
+        #                N is the offset in the string table ; in this case, we compute the real section names)
+        if re.match(r"^\/\d+$", name) and _real_section_names(path):
+            name = _real_section_names(path)[i]
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
