@@ -105,7 +105,7 @@ def _human_readable_size(size, precision=0):
 def _real_section_names(path):
     from subprocess import check_output
     try:
-        names, out = [], check_output(["objdump", "-h", path]).decode()
+        names, out = [], check_output(["objdump", "-h", path]).decode("latin-1")
     except FileNotFoundError:
         return
     for l in out.split("\n"):
@@ -370,6 +370,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     :param kwargs:     keyword-arguments for characteristics(...) ; n_samples and window_size
     """
     import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
     plt.rcParams['font.family'] = "serif"
     if len(filenames) == 0:
         raise ValueError("No executable to plot")
@@ -463,8 +464,10 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     plt.subplots_adjust(left=[.15, .02][labels is None and sublabel is None], right=[1.02, .82][lloc_side],
                         bottom=.5/max(1.75, nf))
     h, l = (objs[[0, 1][title]] if nf+[0, 1][title] > 1 else objs).get_legend_handles_labels()
+    h.append(Patch(facecolor="black")), l.append("Headers")
+    h.append(Patch(facecolor="lightgray")), l.append("Overlay")
     if len(h) > 0:
-        plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else 2, prop={'size': 7})
+        plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else len(l), prop={'size': 7})
     img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
