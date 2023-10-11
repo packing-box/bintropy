@@ -40,6 +40,7 @@ dependencies = [
   "lief>=0.13.0",
   "matplotlib",
   "numpy>=1.23.0",
+  "pillow>=10.0.1",
 ]
 dynamic = ["version"]
 

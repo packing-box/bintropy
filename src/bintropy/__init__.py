@@ -324,11 +324,8 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
             n_ignored += 1
             continue
         # if not ignored, process it
-        d = {}
-        for c in block:
-            d.setdefault(c, 0)
-            d[c] += 1
-        e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in d.values()]]) or .0)
+        chr_cts = [block.count(c) for c in set(block)]
+        e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in chr_cts]]) or .0)
     # return the entropies per block and the average entropy of all blocks if n_blocks > 1
     return (e, sum([n or 0 for n in e]) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 or blocksize > 0 else e[0]
 
