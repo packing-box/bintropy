@@ -59,7 +59,7 @@ def main():
     parser.add_argument("path", type=valid_file, help="path to executable")
     parser.add_argument("-b", "--benchmark", action="store_true",
                         help="enable benchmarking, output in seconds (default: False)")
-    parser.add_argument("-m", "--mode", choices=[0, 1, 2], type=int, default=0,
+    parser.add_argument("-m", "--mode", choices=(0, 1, 2), type=int, default=0,
                         help="mode of operation (default: 0)\n - 0: full binary\n - 1: per section\n - 2: per segment")
     parser.add_argument("-p", "--plot", action="store_true", help="plot the entropy and sections (default: False)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display debug information (default: False)")

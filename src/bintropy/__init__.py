@@ -170,7 +170,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
         if mode == 1:  # per section
             if len(binary.sections) > 0:
                 for i, section in enumerate(binary.sections):
-                    n, d = section.name, section.content
+                    n, d = section.name, section.content.tobytes()
                     # special case: for some executables compiled with debug information, some sections may be named
                     #                with the format "/[N]" where N is the offset in the string table ; in this case, we
                     #                compute the real section names
@@ -183,7 +183,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
                 return
         elif mode == 2:  # per segment
             for i, segment in enumerate(binary.segments):
-                _handle("segment #%d" % i, segment.content)
+                _handle("segment #%d" % i, segment.content.tobytes())
         else:
             raise NotImplementedError("This mode does not exist")
         if logger:
