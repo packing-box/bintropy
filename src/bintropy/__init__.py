@@ -86,7 +86,7 @@ def _get_ep_and_section(binary):
         else:
             raise OSError("Unknown format")
         return ep, ep_section.name
-    except (AttributeError, lief._lief.lief_errors.not_found, lief._lief.lief_errors.conversion_error):
+    except (AttributeError, TypeError):
         return None, None
 
 
@@ -116,7 +116,7 @@ def _real_section_names(path):
 
 
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
-             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, **kwargs):
+             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, parsed=None, **kwargs):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
     :param executable:                path to the executable to be analyzed
@@ -127,12 +127,13 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
     :param threshold_average_entropy: threshold on average entropy for deciding if packed
     :param threshold_highest_entropy: threshold on highest entropy for deciding if packed
     :param logger:                    logger instance for debug purpose
+    :param parsed:                    already parsed binary object
     :return:                          if decide is True  => bool (whether the input executable is packed or not)
                                                    False => (average_entropy, highest_block_entropy)
     """
     path = str(executable)
     # try to parse the binary first
-    binary = lief.parse(path)
+    binary = parsed or lief.parse(path)
     if binary is None:
         raise OSError("Unknown format")
     # now select the right thresholds
@@ -302,7 +303,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
     """
     e, l = [], len(something)
     if l == 0:
-        return 0.
+        return ([], None) if blocksize > 0 else 0.
     bs = blocksize or l
     n_blocks, n_ignored = math.ceil(float(l) / bs), 0
     for i in range(0, l, bs):
@@ -327,7 +328,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
         chr_cts = [block.count(c) for c in set(block)]
         e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in chr_cts]]) or .0)
     # return the entropies per block and the average entropy of all blocks if n_blocks > 1
-    return (e, sum([n or 0 for n in e]) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 or blocksize > 0 else e[0]
+    return (e, sum(n or 0 for n in e) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 or blocksize > 0 else e[0]
 
 
 def is_packed(entropies, average, threshold_average_entropy, threshold_highest_entropy, logger=None):
