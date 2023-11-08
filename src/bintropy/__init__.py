@@ -356,7 +356,8 @@ def is_packed(entropies, average, threshold_average_entropy, threshold_highest_e
     return c1 and c2
 
 
-def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, sublabel=None, scale=False, **kwargs):
+def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, sublabel=None, scale=False, target=None,
+         return_plt=False, **kwargs):
     """ Plot input binaries' characteristics on a same figure.
     
     :param img:        destination filename for the created figure
@@ -365,6 +366,9 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     :param dpi:        resolution of the created figure
     :param labels:     list of custom labels to be used for the binaries (can be lambda-based)
     :param sublabel:   static or lambda-based sublabel for display under the label
+    :param scale:      use the same scale for multiple files
+    :param target:     use this target name in the title (instead of the first filename from the input list)
+    :param return_plt: return plt object (if False, close the current figure and return None)
     :param kwargs:     keyword-arguments for characteristics(...) ; n_samples and window_size
     """
     import matplotlib.pyplot as plt
@@ -393,8 +397,9 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
         obj.axis("off")
         # set the main title for the whole figure
         if i == 0 and title:
-            fig.suptitle("Entropy per section of %s file: %s" % (data['type'], filename), x=[.6, .5][labels is None],
-                         y=1.-.6/(nf+[0, 1][title]), ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
+            x_t, y_t = [.6, .5][labels is None], 1. - .6 / (nf + [0, 1][title])
+            fig.suptitle("Entropy per section of %s file: %s" % (data['type'], target or filename), x=x_t, y=y_t,
+                         ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
         # set the label and sublabel and display them
         try:
             label = labels[i]
@@ -473,5 +478,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
         plt.savefig(img_name + "." + img_format, img_format=img_format, dpi=dpi, bbox_inches="tight")
     except:  # format argument renamed in further versions of pyplot
         plt.savefig(img_name + "." + img_format, format=img_format, dpi=dpi, bbox_inches="tight")
-    return plt
+    if return_plt:
+        return plt
+    plt.close()
 
