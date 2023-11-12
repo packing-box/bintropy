@@ -63,12 +63,15 @@ def main():
                         help="mode of operation (default: 0)\n - 0: full binary\n - 1: per section\n - 2: per segment")
     parser.add_argument("-p", "--plot", action="store_true", help="plot the entropy and sections (default: False)")
     parser.add_argument("-v", "--verbose", action="store_true", help="display debug information (default: False)")
-    parser.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
+    blocks = parser.add_mutually_exclusive_group()
+    blocks.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
                                                                   "the half are zeros (default: False)")
     parser.add_argument("--blocksize", type=Positive(int), default=256,
                         help="block size to be considered (default: 256)")
     parser.add_argument("--do-not-decide", dest="decide", action="store_false",
                         help="do not decide if packed, return entropy values (default: decide)")
+    blocks.add_argument("--ignore-half-block-same-byte", action="store_true",
+                        help="extend the heuristics based on half blocks having zeros to any byte")
     parser.add_argument("--threshold-average-entropy", type=Positive(float, int),
                         help="threshold for the average entropy")
     parser.add_argument("--threshold-highest-entropy", type=Positive(float, int),

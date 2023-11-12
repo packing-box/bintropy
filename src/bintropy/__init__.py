@@ -4,6 +4,7 @@ import math
 import os
 import re
 import statistics
+from collections import Counter
 from functools import lru_cache
 
 
@@ -115,8 +116,9 @@ def _real_section_names(path):
     return names
 
 
-def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, decide=True,
-             threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, parsed=None, **kwargs):
+def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ignore_half_block_same_byte=False,
+             decide=True, threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, parsed=None,
+             **kwargs):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
     :param executable:                path to the executable to be analyzed
@@ -145,7 +147,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
         with open(path, 'rb') as f:
             exe = f.read()
         __log(logger, "Entropy (Shannon): {}".format(entropy(exe)))
-        e = entropy(exe, blocksize, ignore_half_block_zeros)
+        e = entropy(exe, blocksize, ignore_half_block_zeros, ignore_half_block_same_byte)
         if logger:
             msg = "Entropy (average): {}".format(e[1] or "-")
             if e[0] != [None]:
@@ -163,7 +165,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, de
     # SECOND AND THIRD MODES: compute a weighted entropy of all the sections or segments of the executable
     else:
         def _handle(n, d):
-            r = entropy(d, blocksize, ignore_half_block_zeros)
+            r = entropy(d, blocksize, ignore_half_block_zeros, ignore_half_block_same_byte)
             e[n] = r if isinstance(r, (list, tuple)) else ([r], r)
             w[n] = len(d)
         e, w = {}, {}
@@ -293,13 +295,14 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     return data
 
 
-def entropy(something, blocksize=0, ignore_half_block_zeros=False):
+def entropy(something, blocksize=0, ignore_half_block_zeros=False, ignore_half_block_same_byte=False):
     """ Shannon entropy, with the possibility to compute the entropy per block with a given size, possibly ignoring
          blocks in which at least half of the characters or bytes are zeros.
     
-    :param something:               string or bytes
-    :param blocksize:               block size to be considered for the total entropy
-    :param ignore_half_block_zeros: ignore blocks in which at least half of the chars/bytes are zeros
+    :param something:                   string or bytes
+    :param blocksize:                   block size to be considered for the total entropy
+    :param ignore_half_block_zeros:     ignore blocks in which at least half of the chars/bytes are zeros
+    :param ignore_half_block_same_byte: same as previous but for an arbitrary byte
     """
     e, l = [], len(something)
     if l == 0:
@@ -310,14 +313,13 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False):
         block, n_zeros, ignore = something[i:i+bs], 0, False
         lb = len(block)
         # consider ignoring blocks in which more than half of the chars/bytes are zeros
-        if ignore_half_block_zeros:
-            lz = lb // 2
-            for c in block:
-                if isinstance(c, int) and c == 0 or isinstance(c, str) and ord(c) == 0:
-                    n_zeros += 1
-                if n_zeros > lz:
-                    ignore = True
-                    break
+        if ignore_half_block_zeros or ignore_half_block_same_byte:
+            cnt = Counter(block)
+            max_occ = cnt.most_common(1)[0][1]
+            if max_occ > lb // 2:
+                most_common_chars = [c for c, n in cnt.items() if n == max_occ]
+                ignore = ignore_half_block_same_byte or \
+                         ignore_half_block_zeros and any(c in most_common_chars for c in ["\x00", b"\x00"])
         # when ignore has been set to True, this means that the current block has more than half of its bytes filled
         #  with zeros ; then put None instead of an entropy value and increase the related counter
         if ignore:
