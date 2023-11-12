@@ -78,8 +78,7 @@ $ bintropy binary --plot
 
 Example of generated figures:
 
-<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/example-not-packed.png"></p>
-<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/example-packed.png"></p>
+<p align="center"><img src="https://github.com/packing-box/bintropy/raw/main/docs/example.png"></p>
 
 ## :star: Related Projects
 
