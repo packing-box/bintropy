@@ -37,8 +37,9 @@ classifiers = [
   "Topic :: Security",
 ]
 dependencies = [
+  "fonttools>=4.43.0",
   "lief>=0.13.0",
-  "matplotlib",
+  "matplotlib>=3.7.4",
   "numpy>=1.23.0",
   "pillow>=10.0.1",
 ]
