@@ -103,13 +103,21 @@ def _human_readable_size(size, precision=0):
 # dirty fix for section names requiring to get their real names from the string table (as lief does not seem to handle
 #  this in every case)
 @lru_cache
-def _real_section_names(path):
-    from subprocess import check_output
+def _real_section_names(path, logger=None, timeout=10):
+    from subprocess import Popen, PIPE, TimeoutExpired
+    p, names = Popen(["objdump", "-h", path], stdout=PIPE, stderr=PIPE), []
     try:
-        names, out = [], check_output(["objdump", "-h", path]).decode("latin-1")
-    except FileNotFoundError:
+        out, err = p.communicate(timeout=timeout)
+    except TimeoutExpired:
+        if logger:
+            logger.debug(f"objdump: timeout ({timeout} seconds)")
         return
-    for l in out.split("\n"):
+    if err:
+        if logger:
+            for l in err.decode("latin-1").strip().split("\n"):
+                logger.debug(l)
+        return
+    for l in out.decode("latin-1").strip().split("\n"):
         m = re.match(r"\s+\d+\s(.*?)\s+", l)
         if m:
             names.append(m.group(1))
@@ -176,7 +184,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ig
                     # special case: for some executables compiled with debug information, some sections may be named
                     #                with the format "/[N]" where N is the offset in the string table ; in this case, we
                     #                compute the real section names
-                    if re.match(r"^\/\d+$", n) and _real_section_names(path):
+                    if re.match(r"^\/\d+$", n) and _real_section_names(path, logger=logger):
                         n = _real_section_names(path)[i]
                     _handle(n, d)
             else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
@@ -263,7 +271,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
         name = __secname(section.name)
         # special case: for some executables compiled with debug information, sections may be of the form "/[N]" (where
         #                N is the offset in the string table ; in this case, we compute the real section names)
-        if re.match(r"^\/\d+$", name) and _real_section_names(path):
+        if re.match(r"^\/\d+$", name) and _real_section_names(path, logger=kwargs.get('logger')):
             name = _real_section_names(path)[i]
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
@@ -473,7 +481,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     h.append(Patch(facecolor="lightgray")), l.append("Overlay")
     if len(h) > 0:
         plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else len(l), prop={'size': 7})
-    img_name = img_name or os.path.splitext(os.path.basename(filenames[0]))[0]
+    img_name = str(img_name) or os.path.splitext(os.path.basename(filenames[0]))[0]
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
     try:
