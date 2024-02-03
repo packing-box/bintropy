@@ -65,9 +65,9 @@ SUBLABELS = {
 #                  this may have an impact on typical values for other executable formats
 THRESHOLDS = {
     'default':           (6.677, 7.199),  # average entropy, highest entropy
-    lief.EXE_FORMATS.PE: (6.677, 7.199),
-    #TODO: get average and highest entropy values for lief.EXE_FORMATS.ELF
-    #TODO: get average and highest entropy values for lief.EXE_FORMATS.MACHO
+    lief.Binary.FORMATS.PE: (6.677, 7.199),
+    #TODO: get average and highest entropy values for lief.Binary.FORMATS.ELF
+    #TODO: get average and highest entropy values for lief.Binary.FORMATS.MACHO
 }
 
 
