@@ -1,5 +1,5 @@
 fonttools>=4.43.0  # fix for SNYK-PYTHON-FONTTOOLS-6133203
-lief>=0.13.0
+lief>=0.14.0
 matplotlib>=3.7.4
 numpy>=1.23.0
 pillow>=10.0.1

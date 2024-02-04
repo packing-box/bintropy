@@ -5,7 +5,7 @@ import os
 import re
 import statistics
 from collections import Counter
-from functools import lru_cache
+from functools import lru_cache, wraps
 
 
 __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRESHOLDS"]
@@ -100,6 +100,16 @@ def _human_readable_size(size, precision=0):
     return "%.*f%s" % (precision, size, units[i])
 
 
+def _lief_logging(f):
+    """ Decorator for setting LIEF logging when calling a function. """
+    @wraps(f)
+    def _wrapper(*args, **kwargs):
+        l = kwargs.get('logger')
+        lief.logging.enable() if l and l.level <= 10 else lief.logging.disable()
+        return f(*args, **kwargs)
+    return _wrapper
+
+
 # dirty fix for section names requiring to get their real names from the string table (as lief does not seem to handle
 #  this in every case)
 @lru_cache
@@ -124,6 +134,7 @@ def _real_section_names(path, logger=None, timeout=10):
     return names
 
 
+@_lief_logging
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ignore_half_block_same_byte=False,
              decide=True, threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, parsed=None,
              **kwargs):
@@ -217,6 +228,7 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ig
         return is_packed(e2, e_avg2, _t1, _t2, logger) if decide else (e2, e_avg2)
 
 
+@_lief_logging
 def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, **kwargs):
     """ Compute executable's desired characteristics, including:
         - 'x' samples of entropy using a sliding window of size 'window_size'
