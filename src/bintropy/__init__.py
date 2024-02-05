@@ -13,7 +13,7 @@ __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRES
 
 __btype = lambda b: str(type(b)).split(".")[2]
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
-__secname = lambda s: s.strip("\x00") or s or "<empty>"
+__secname = lambda s: _ensure_str(s).strip("\x00") or _ensure_str(s) or "<empty>"
 
 # https://matplotlib.org/2.0.2/examples/color/named_colors.html
 COLORS = {
@@ -69,6 +69,17 @@ THRESHOLDS = {
     #TODO: get average and highest entropy values for lief.Binary.FORMATS.ELF
     #TODO: get average and highest entropy values for lief.Binary.FORMATS.MACHO
 }
+
+
+def _ensure_str(s, encoding='utf-8', errors='strict'):
+    if isinstance(s, bytes):
+        try:
+            return s.decode(encoding, errors)
+        except:
+            return s.decode("latin-1")
+    elif not isinstance(s, (str, bytes)):
+        raise TypeError("not expecting type '%s'" % type(s))
+    return s
 
 
 def _get_ep_and_section(binary):
@@ -384,7 +395,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     
     :param img:        destination filename for the created figure
     :param filenames:  list of paths of the binaries to be included in the figure
-    :param img_format: format of the created figure
+    :param img_format: image format of the created figure
     :param dpi:        resolution of the created figure
     :param labels:     list of custom labels to be used for the binaries (can be lambda-based)
     :param sublabel:   static or lambda-based sublabel for display under the label
