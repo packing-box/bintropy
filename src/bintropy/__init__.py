@@ -504,7 +504,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     h.append(Patch(facecolor="lightgray")), l.append("Overlay")
     if len(h) > 0:
         plt.figlegend(h, l, loc=lloc, ncol=1 if lloc_side else len(l), prop={'size': 7})
-    img_name = str(img_name) or os.path.splitext(os.path.basename(filenames[0]))[0]
+    img_name = str(img_name or os.path.splitext(os.path.basename(filenames[0]))[0])
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
     try:
