@@ -46,15 +46,21 @@ Two values are then kept:
 | Mode | Data | Values |
 |---|---|---|
 | `0` (default) | The whole file. | The average and highest entropy of its blocks. |
-| `1` | The content of each section. | The average and highest block entropy of each section, averaged over the sections and weighted by their size. |
-| `2` | The content of each segment. | The same, over the segments. |
+| `1` | The content of each section. | The highest block entropy of all the sections, and the average block entropy of each section, averaged over the sections and weighted by their size. |
+| `2` | The content of each segment. | The same, over the segments. PE files have no segments. |
 
 Modes 0 and 1 are the two modes of the paper. Mode 2 is an addition. As the
 segments cover most of the file, it gives results close to mode 0.
 
 In modes 1 and 2, the sections or segments whose average entropy is 0 or
-undefined (empty, or with only ignored blocks) are left out of the weighted
-averages.
+undefined (empty, or with only ignored blocks) are left out. When none is left,
+the result is `False`.
+
+With `--blocksize 0`, each section or segment (or the whole file, in mode 0) is
+one block.
+
+Small sections and segments lower the average: a block of fewer than 256 bytes
+cannot reach an entropy of 8 bits per byte (at most `log2(size)`).
 
 ## Decision criteria
 
@@ -96,7 +102,7 @@ names from `objdump -h`, when it is installed.
   Mach-O files, or the other modes.
 - Some packers pack the section header table as well: ELF files packed with
   UPX, for instance, have no sections for LIEF. Mode 1 cannot analyze them;
-  use mode 0 or 2.
+  use mode 0 or 2. PE files have no segments, so mode 2 cannot analyze them.
 - Entropy only tells whether data looks random. Executables that embed
   compressed resources (images, archives) can be reported as packed, and
   packers that do not compress or encrypt (or that lower the entropy on

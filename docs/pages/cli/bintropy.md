@@ -21,7 +21,7 @@ $ bintropy [-h] [-b] [-m {0,1,2}] [-p] [-v] [--all-blocks] [--blocksize BLOCKSIZ
 | Option | Default | Description |
 |---|---|---|
 | `-m`, `--mode {0,1,2}` | `0` | [Mode of operation](../internals.md#modes-of-operation): `0` for the whole binary, `1` per section, `2` per segment. |
-| `--blocksize N` | `256` | Size of the blocks, in bytes. |
+| `--blocksize N` | `256` | Size of the blocks, in bytes. `0` considers the data (whole file, section or segment) as one block. |
 | `--all-blocks` | | Keep the blocks in which more than half of the bytes are zeros. By default, they are ignored. |
 | `--ignore-half-block-same-byte` | | Ignore the blocks in which more than half of the bytes are the same byte, whatever it is. Cannot be used with `--all-blocks`. |
 | `--do-not-decide` | | Print the entropy values instead of the decision. |
@@ -44,29 +44,30 @@ $ bintropy [-h] [-b] [-m {0,1,2}] [-p] [-v] [--all-blocks] [--blocksize BLOCKSIZ
 | Options | Output |
 |---|---|
 | (default) | `True` if the binary contains compressed or encrypted bytes, `False` otherwise. |
-| `--do-not-decide` | The highest block entropy and the average block entropy, separated by a space. In modes 1 and 2, both are averaged over the sections or segments, weighted by their size. |
+| `--do-not-decide` | The highest block entropy and the average block entropy, separated by a space. In modes 1 and 2, the highest block entropy is taken over all the sections or segments, and the average is weighted by their size. |
 | `-b` | The elapsed time is appended, separated by a space. |
 
 ```console
 $ bintropy /bin/ls
 False
 $ bintropy /bin/ls -m 1 --do-not-decide -b
-5.248504681254649 4.558622044428844 0.024426703981589526
+6.007043708894409 5.0052158802067614 0.015125253004953265
 $ bintropy -v /bin/ls
 DEBUG:bintropy:Entropy (Shannon): 5.934931851075336
-DEBUG:bintropy:Entropy (average): 4.324928827302256
-    #1  : 1.6578597265665889
-    #2  : 1.8097544283628733
+DEBUG:bintropy:Entropy (average): 5.012807161052562
+    #1  : -
+    #2  : -
 [...]
-DEBUG:bintropy:Average entropy criterion (>6.677): False (4.324928827302256)
-DEBUG:bintropy:Highest entropy criterion (>7.199): False (5.932568219905103)
+DEBUG:bintropy:Average entropy criterion (>=6.677): False (5.012807161052562)
+DEBUG:bintropy:Highest entropy criterion (>=7.199): False (5.932568219905103)
 False
 ```
 
 When the file cannot be analyzed, for instance because it is not a supported
 executable, the error is logged with its traceback and nothing is printed on
-the standard output. In mode 1, a binary without any section (for instance an
-ELF packed with UPX) gives an error that suggests another mode.
+the standard output. A binary without any section in mode 1 (for instance an
+ELF packed with UPX), or without any segment in mode 2 (any PE file), gives an
+error that suggests another mode.
 
 ## Plotting
 
@@ -80,12 +81,15 @@ executable without its extension.
 The figure is drawn with [`plot`](../api.md#plot), which offers more options
 (several binaries on one figure, labels, image format and resolution).
 
+The result is printed before the plot is drawn. If plotting fails, the error is
+logged (with its traceback when `-v` is set) and the exit code is 1.
+
 ## Exit code
 
 | Code | Meaning |
 |---|---|
 | `0` | The analysis ran, whatever the result. |
-| `1` | The file could not be analyzed, or an unexpected error occurred. |
+| `1` | The file could not be analyzed or plotted, or an unexpected error occurred. |
 | `2` | Invalid arguments. |
 
 !!! note

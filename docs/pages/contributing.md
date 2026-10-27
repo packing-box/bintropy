@@ -42,12 +42,20 @@ with this.
 $ git clone https://github.com/packing-box/bintropy
 $ cd bintropy
 $ pip install -e .
-$ pip install flake8
+$ pip install flake8 pytest pytest-cov
 $ flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+$ pytest --cov=bintropy
 ```
 
+The tests analyze and plot the sample executables of `tests/` (`hello.elf`,
+`hello.exe` and `hello.macho`) and a "packed" ELF made at run time by replacing
+the content of the sections of `hello.elf` with random bytes. The tests of the
+real section names of `hello.exe` need `objdump` (GNU binutils); they are
+skipped without it.
+
 CI (`.github/workflows/python-package.yml`) installs the package on Python
-3.10 to 3.13 and runs this flake8 check.
+3.10 to 3.13, runs this flake8 check and the tests. On pushes to `main`, it
+publishes the coverage badge of the README to the `coverage-badge` branch.
 
 ## Releasing
 

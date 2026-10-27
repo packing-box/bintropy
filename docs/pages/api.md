@@ -22,7 +22,7 @@ Analyzes one executable (see [How it works](internals.md)).
 |---|---|---|
 | `executable` | `str` or path-like | Path to the executable. |
 | `mode` | `int` | [Mode of operation](internals.md#modes-of-operation): `0` for the whole binary, `1` per section, `2` per segment. |
-| `blocksize` | `int` | Size of the blocks, in bytes. |
+| `blocksize` | `int` | Size of the blocks, in bytes. `0` considers the data (whole file, section or segment) as one block. |
 | `ignore_half_block_zeros` | `bool` | Ignore the blocks in which more than half of the bytes are zeros. |
 | `ignore_half_block_same_byte` | `bool` | Ignore the blocks in which more than half of the bytes are the same byte, whatever it is. |
 | `decide` | `bool` | Return the decision (`True`) or the entropy values (`False`). |
@@ -37,10 +37,11 @@ Analyzes one executable (see [How it works](internals.md)).
 - with `decide=True`, `True` if the executable contains compressed or
   encrypted bytes and `False` otherwise;
 - with `decide=False`, the tuple `(highest_block_entropy, average_block_entropy)`.
-  In modes 1 and 2, both values are averaged over the sections or segments,
-  weighted by their size;
-- `None` in mode 1 when the executable has no section (an error is logged
-  when a `logger` is set).
+  In modes 1 and 2, the highest block entropy is taken over all the sections or
+  segments, and the average is weighted by their size. When all the blocks are
+  ignored, both values are `0.0` (and the decision is `False`);
+- `None` when the executable has no section in mode 1, or no segment in mode 2
+  (PE files have none). An error is logged when a `logger` is set.
 
 **Raises**:
 
@@ -98,7 +99,7 @@ their threshold, and `False` otherwise, including when there is no valid block.
 ## `characteristics`
 
 ```python
-characteristics(executable, n_samples=2048, window_size=lambda s: 2*s, **kwargs)
+characteristics(executable, n_samples=2048, window_size=lambda s: 2*s, parsed=None, **kwargs)
 ```
 
 Computes the data used by [`plot`](#plot). It returns a dictionary with:
@@ -115,7 +116,8 @@ Computes the data used by [`plot`](#plot). It returns a dictionary with:
 | `entrypoint` | The tuple `(sample, file_offset, section_name)` of the entry point, or `None`. |
 
 `window_size` is a size in bytes, or a function of the step (the number of
-bytes between two samples). The window is at least 512 bytes.
+bytes between two samples). The window is at least 512 bytes. `parsed` is the
+executable, already parsed with LIEF, to avoid parsing it again.
 
 **Raises** `TypeError` if LIEF cannot parse the file as an executable.
 
@@ -138,11 +140,11 @@ figure, and saves it.
 | `img_format` | `str` | Image format, appended to `img_name` as extension. |
 | `dpi` | `int` | Resolution of the figure. |
 | `labels` | `list` | Labels of the rows, as strings or as functions of the [`characteristics`](#characteristics) of the executable. |
-| `sublabel` | `str` or function | Text under the labels: `"ep"`, `"size"`, `"size-ep"`, `"size-ep-ent"`, or a function of the characteristics. |
+| `sublabel` | `str` or function | Text under the labels: `"ep"`, `"size"`, `"size-ep"`, `"size-ep-ent"`, or a function of the characteristics. The sublabels with the entry point are left out for executables without one. |
 | `scale` | `bool` | Scale the rows with the size of the executables, relative to the first one. |
 | `target` | `str` | Name in the title instead of the file name of the first executable. |
 | `return_plt` | `bool` | Return the `matplotlib.pyplot` module without closing the figure, instead of `None`. |
-| `**kwargs` | | Passed to [`characteristics`](#characteristics) (`n_samples`, `window_size`). `legend_location` (default: `"lower center"`) and `no_title` are also supported. |
+| `**kwargs` | | Passed to [`characteristics`](#characteristics) (`n_samples`, `window_size`, and `parsed` when there is a single file). `legend_location` (default: `"lower center"`) and `no_title` are also supported. |
 
 **Raises** `ValueError` if no file name is given.
 

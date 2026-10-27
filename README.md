@@ -4,8 +4,10 @@
 
 [![PyPi](https://img.shields.io/pypi/v/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
+[![Read The Docs](https://readthedocs.org/projects/bintropy/badge/?version=latest)](https://bintropy.readthedocs.io/en/latest/?badge=latest)
 [![Build Status](https://github.com/packing-box/bintropy/actions/workflows/python-package.yml/badge.svg)](https://github.com/packing-box/bintropy/actions/workflows/python-package.yml)
 [![Security](https://github.com/packing-box/bintropy/actions/workflows/security.yml/badge.svg)](https://github.com/packing-box/bintropy/actions/workflows/security.yml)
+[![Coverage Status](https://raw.githubusercontent.com/packing-box/bintropy/coverage-badge/docs/coverage.svg)](#)
 [![DOI](https://zenodo.org/badge/382563382.svg)](https://zenodo.org/badge/latestdoi/382563382)
 [![License](https://img.shields.io/pypi/l/bintropy.svg)](https://pypi.python.org/pypi/bintropy/)
 

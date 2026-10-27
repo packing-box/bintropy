@@ -37,7 +37,7 @@ $ pip install bintropy
 $ bintropy /bin/ls
 False
 $ bintropy /bin/ls --do-not-decide
-5.932568219905103 4.324928827302256
+5.932568219905103 5.012807161052562
 ```
 
 From Python:
