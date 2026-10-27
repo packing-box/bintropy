@@ -11,7 +11,8 @@ from functools import lru_cache, wraps
 __all__ = ["bintropy", "characteristics", "entropy", "is_packed", "plot", "THRESHOLDS"]
 
 
-__btype = lambda b: str(type(b)).split(".")[2]
+__btype = lambda b: {lief.Binary.FORMATS.ELF: "ELF", lief.Binary.FORMATS.MACHO: "MachO",
+                      lief.Binary.FORMATS.PE: "PE"}.get(b.format, "unknown")
 __log = lambda l, m, lvl="debug": getattr(l, lvl)(m) if l else None
 __secname = lambda s: _ensure_str(s).strip("\x00") or _ensure_str(s) or "<empty>"
 
@@ -46,7 +47,7 @@ COLORS = {
     'cstring':  "navy",           # string table
     'const':    "cornflowerblue", # read-only data
     'literal4': "blue",           # 4-byte literal values
-    'literal4': "mediumblue",     # 8-byte literal values
+    'literal8': "mediumblue",     # 8-byte literal values
     'common':   "royalblue",      # uninitialized imported symbol definitions
 }
 MIN_ZONE_WIDTH = 3  # minimum number of samples on the entropy plot for a section (so that it can still be visible even
@@ -75,7 +76,7 @@ def _ensure_str(s, encoding='utf-8', errors='strict'):
     if isinstance(s, bytes):
         try:
             return s.decode(encoding, errors)
-        except:
+        except UnicodeDecodeError:
             return s.decode("latin-1")
     elif not isinstance(s, (str, bytes)):
         raise TypeError("not expecting type '%s'" % type(s))
@@ -126,10 +127,17 @@ def _lief_logging(f):
 @lru_cache
 def _real_section_names(path, logger=None, timeout=10):
     from subprocess import Popen, PIPE, TimeoutExpired
-    p, names = Popen(["objdump", "-h", path], stdout=PIPE, stderr=PIPE), []
+    try:
+        p, names = Popen(["objdump", "-h", path], stdout=PIPE, stderr=PIPE), []
+    except OSError as e:  # e.g. objdump is not installed
+        if logger:
+            logger.debug(f"objdump: {e}")
+        return
     try:
         out, err = p.communicate(timeout=timeout)
     except TimeoutExpired:
+        p.kill()
+        p.communicate()
         if logger:
             logger.debug(f"objdump: timeout ({timeout} seconds)")
         return
@@ -145,24 +153,38 @@ def _real_section_names(path, logger=None, timeout=10):
     return names
 
 
+def _section_name(path, name, index, logger=None):
+    """ Get the real name of a section ; for some executables compiled with debug information, section names may be of
+         the form "/[N]" where N is the offset in the string table, in which case the names are taken from objdump. """
+    if re.match(r"^\/\d+$", name):
+        names = _real_section_names(path, logger=logger)
+        if names and index < len(names):
+            return names[index]
+    return name
+
+
 @_lief_logging
 def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ignore_half_block_same_byte=False,
              decide=True, threshold_average_entropy=None, threshold_highest_entropy=None, logger=None, parsed=None,
              **kwargs):
     """ Simple implementation of Bintropy as of https://ieeexplore.ieee.org/document/4140989.
     
-    :param executable:                path to the executable to be analyzed
-    :param full:                      process the executable as a whole or per section only (cfr modes of operation)
-    :param blocksize:                 process per block of N bytes (0 means considering the executable as a whole)
-    :param ignore_half_block_zeros:   ignore blocks having more than half of zeros
-    :param decide:                    decide if packed or not, otherwise simply return the entropy values
-    :param threshold_average_entropy: threshold on average entropy for deciding if packed
-    :param threshold_highest_entropy: threshold on highest entropy for deciding if packed
-    :param logger:                    logger instance for debug purpose
-    :param parsed:                    already parsed binary object
-    :return:                          if decide is True  => bool (whether the input executable is packed or not)
-                                                   False => (average_entropy, highest_block_entropy)
+    :param executable:                  path to the executable to be analyzed
+    :param mode:                        mode of operation: 0 (whole executable), 1 (per section) or 2 (per segment)
+    :param blocksize:                   process per block of N bytes (0 means considering the data as a whole)
+    :param ignore_half_block_zeros:     ignore blocks having more than half of zeros
+    :param ignore_half_block_same_byte: ignore blocks having more than half of the same byte
+    :param decide:                      decide if packed or not, otherwise simply return the entropy values
+    :param threshold_average_entropy:   threshold on average entropy for deciding if packed
+    :param threshold_highest_entropy:   threshold on highest entropy for deciding if packed
+    :param logger:                      logger instance for debug purpose
+    :param parsed:                      already parsed binary object
+    :return:                            if decide is True  => bool (whether the input executable is packed or not)
+                                                     False => (highest_block_entropy, average_entropy)
+                                        None if the executable has no section (mode 1) or no segment (mode 2)
     """
+    if mode not in (0, 1, 2):
+        raise NotImplementedError("This mode does not exist")
     path = str(executable)
     # try to parse the binary first
     binary = parsed or lief.parse(path)
@@ -172,75 +194,68 @@ def bintropy(executable, mode=0, blocksize=256, ignore_half_block_zeros=True, ig
     thresholds = THRESHOLDS.get(binary.format, THRESHOLDS['default'])
     _t1, _t2 = threshold_average_entropy, threshold_highest_entropy
     _t1, _t2 = [_t1, thresholds[0]][_t1 is None], [_t2, thresholds[1]][_t2 is None]
+    # entropies per block and average entropy, also when the data is considered as a whole (blocksize=0)
+    def _entropy(data):
+        r = entropy(data, blocksize, ignore_half_block_zeros, ignore_half_block_same_byte)
+        return r if isinstance(r, tuple) else ([r], r)
+    def _blocks_msg(entr):
+        msg = ""
+        if entr[0] != [None]:
+            iw = len(str(len(entr[0])))
+            for i, j in enumerate(entr[0]):
+                msg += ("\n    #{: <%s}: {}" % iw).format(i + 1, "-" if j is None else j)
+        return msg
     # FIRST MODE: compute the entropy of the whole executable
     if mode == 0:
         with open(path, 'rb') as f:
             exe = f.read()
         __log(logger, "Entropy (Shannon): {}".format(entropy(exe)))
-        e = entropy(exe, blocksize, ignore_half_block_zeros, ignore_half_block_same_byte)
+        e = _entropy(exe)
         if logger:
-            msg = "Entropy (average): {}".format(e[1] or "-")
-            if e[0] != [None]:
-                iw = len(str(len(e[0])))
-                for i, j in enumerate(e[0]):
-                    msg += ("\n    #{: <%s}: {}" % iw).format(i + 1, "-" if j is None else j)
-            __log(logger, msg)
+            __log(logger, "Entropy (average): {}".format(e[1] or "-") + _blocks_msg(e))
         if decide:
             return is_packed(e[0], e[1], _t1, _t2, logger)
-        else:
-            try:
-                return max([x for x in e[0] if x is not None]), e[1]
-            except ValueError:  # occurs when ignore_half_block_zeros=True and all the blocks have more than half of
-                return 0., 0.   #  their bytes being zeros
-    # SECOND AND THIRD MODES: compute a weighted entropy of all the sections or segments of the executable
-    else:
-        def _handle(n, d):
-            r = entropy(d, blocksize, ignore_half_block_zeros, ignore_half_block_same_byte)
-            e[n] = r if isinstance(r, (list, tuple)) else ([r], r)
-            w[n] = len(d)
-        e, w = {}, {}
-        if mode == 1:  # per section
-            if len(binary.sections) > 0:
-                for i, section in enumerate(binary.sections):
-                    n, d = section.name, section.content.tobytes()
-                    # special case: for some executables compiled with debug information, some sections may be named
-                    #                with the format "/[N]" where N is the offset in the string table ; in this case, we
-                    #                compute the real section names
-                    if re.match(r"^\/\d+$", n) and _real_section_names(path, logger=logger):
-                        n = _real_section_names(path)[i]
-                    _handle(n, d)
-            else:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
-                __log(logger, "This file has no section", "error")
-                __log(logger, "please try another mode of operation", "warning")
-                return
-        elif mode == 2:  # per segment
-            for i, segment in enumerate(binary.segments):
-                _handle("segment #%d" % i, segment.content.tobytes())
-        else:
-            raise NotImplementedError("This mode does not exist")
-        if logger:
-            msg = "Entropy per %s:" % ["section", "segment"][mode == 2]
-            for name, entr in e.items():
-                msg += "\n  %s: " % name
-                msg += "-" if entr[1] is None else "%s (average)" % entr[1]
-                if entr[0] != [None]:
-                    for i, j in enumerate((entr or [[]])[0]):
-                        msg += ("\n    #{: <%s}: {}" % len(str(len(entr[0])))).format(i + 1, "-" if j is None else j)
-            __log(logger, msg)
-        # aggregate per-section entropy scores with a simple weighted sum
-        e2, e_avg2, t = 0, 0, 0
-        for n, entr in e.items():
-            if entr[1] in [.0, None]:
-                continue
-            e2 += max([x for x in entr[0] if x is not None]) * w[n]
-            e_avg2 += entr[1] * w[n]
-            t += w[n]
-        e2, e_avg2 = e2 / t, e_avg2 / t
-        return is_packed(e2, e_avg2, _t1, _t2, logger) if decide else (e2, e_avg2)
+        try:
+            return max([x for x in e[0] if x is not None]), e[1]
+        except ValueError:  # occurs when all the blocks are ignored (e.g. more than half of their bytes being zeros)
+            return 0., 0.
+    # SECOND AND THIRD MODES: aggregate the entropy of all the sections or segments of the executable
+    e = []  # list of (name, (entropies per block, average entropy), weight)
+    if mode == 1:  # per section
+        for i, section in enumerate(binary.sections):
+            d = section.content.tobytes()
+            e.append((_section_name(path, __secname(section.name), i, logger), _entropy(d), len(d)))
+    else:  # per segment ; PE files have no segment
+        for i, segment in enumerate(getattr(binary, "segments", [])):
+            d = segment.content.tobytes()
+            e.append(("segment #%d" % i, _entropy(d), len(d)))
+    kind = ["section", "segment"][mode == 2]
+    if len(e) == 0:  # in some cases, packed executables can have no section ; e.g. UPX(/bin/ls)
+        __log(logger, "This file has no %s" % kind, "error")
+        __log(logger, "please try another mode of operation", "warning")
+        return
+    if logger:
+        msg = "Entropy per %s:" % kind
+        for name, entr, _ in e:
+            msg += "\n  %s: " % name + ("-" if entr[1] is None else "%s (average)" % entr[1]) + _blocks_msg(entr)
+        __log(logger, msg)
+    # take the highest block entropy of all the sections or segments and their average entropies weighted by their size
+    e_max, e_avg, t = 0., 0., 0
+    for _, entr, w in e:
+        if entr[1] in [.0, None]:
+            continue
+        e_max = max(e_max, max(x for x in entr[0] if x is not None))
+        e_avg += entr[1] * w
+        t += w
+    if t == 0:  # occurs when all the sections or segments are empty or have all their blocks ignored
+        __log(logger, "No valid block found")
+        return False if decide else (0., 0.)
+    e_avg /= t
+    return is_packed(e_max, e_avg, _t1, _t2, logger) if decide else (e_max, e_avg)
 
 
 @_lief_logging
-def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, **kwargs):
+def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, parsed=None, **kwargs):
     """ Compute executable's desired characteristics, including:
         - 'x' samples of entropy using a sliding window of size 'window_size'
         - sections' bounds (reduced according to the 'x' samples)
@@ -250,6 +265,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     :param executable:  path to executable whose characteristics are to be computed
     :param n_samples:   number of samples of entropy required
     :param window_size: window size for computing the entropy
+    :param parsed:      already parsed binary object
     """
     data, path = {'name': os.path.basename(executable), 'entropy': [], 'sections': []}, str(executable)
     # compute window-based entropy
@@ -274,11 +290,15 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
             # compute entropy
             data['entropy'].append(entropy(window)/8.)
     # compute other characteristics using LIEF (catch warnings from stderr)
-    tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
-    os.dup2(null_fd, 2)
-    binary = lief.parse(path)
-    os.dup2(tmp_fd, 2)  # restore stderr
-    os.close(null_fd)
+    if (binary := parsed) is None:
+        tmp_fd, null_fd = os.dup(2), os.open(os.devnull, os.O_RDWR)
+        os.dup2(null_fd, 2)
+        try:
+            binary = lief.parse(path)
+        finally:
+            os.dup2(tmp_fd, 2)  # restore stderr
+            os.close(null_fd)
+            os.close(tmp_fd)
     if binary is None:
         raise TypeError("Not an executable")
     data['type'] = __btype(binary)
@@ -291,11 +311,7 @@ def characteristics(executable, n_samples=N_SAMPLES, window_size=lambda s: 2*s, 
     data['sections'] = [__d(0, int(max(MIN_ZONE_WIDTH, binary.sections[0].offset // chunksize)), "Headers")] \
                        if len(binary.sections) > 0 else []
     for i, section in enumerate(binary.sections):
-        name = __secname(section.name)
-        # special case: for some executables compiled with debug information, sections may be of the form "/[N]" (where
-        #                N is the offset in the string table ; in this case, we compute the real section names)
-        if re.match(r"^\/\d+$", name) and _real_section_names(path, logger=kwargs.get('logger')):
-            name = _real_section_names(path)[i]
+        name = _section_name(path, __secname(section.name), i, kwargs.get('logger'))
         start = max(data['sections'][-1][1] if len(data['sections']) > 0 else 0, int(section.offset // chunksize))
         max_end = min(max(start + MIN_ZONE_WIDTH, int((section.offset + section.size) // chunksize)),
                       len(data['entropy']) - 1)
@@ -341,7 +357,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False, ignore_half_b
     bs = blocksize or l
     n_blocks, n_ignored = math.ceil(float(l) / bs), 0
     for i in range(0, l, bs):
-        block, n_zeros, ignore = something[i:i+bs], 0, False
+        block, cnt, ignore = something[i:i+bs], None, False
         lb = len(block)
         # consider ignoring blocks in which more than half of the chars/bytes are zeros
         if ignore_half_block_zeros or ignore_half_block_same_byte:
@@ -350,7 +366,7 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False, ignore_half_b
             if max_occ > lb // 2:
                 most_common_chars = [c for c, n in cnt.items() if n == max_occ]
                 ignore = ignore_half_block_same_byte or \
-                         ignore_half_block_zeros and any(c in most_common_chars for c in ["\x00", b"\x00"])
+                         ignore_half_block_zeros and any(c in most_common_chars for c in ["\x00", 0])
         # when ignore has been set to True, this means that the current block has more than half of its bytes filled
         #  with zeros ; then put None instead of an entropy value and increase the related counter
         if ignore:
@@ -358,8 +374,8 @@ def entropy(something, blocksize=0, ignore_half_block_zeros=False, ignore_half_b
             n_ignored += 1
             continue
         # if not ignored, process it
-        chr_cts = [block.count(c) for c in set(block)]
-        e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in chr_cts]]) or .0)
+        cnt = cnt or Counter(block)
+        e.append(-sum([p * math.log2(p) for p in [float(ctr) / lb for ctr in cnt.values()]]) or .0)
     # return the entropies per block and the average entropy of all blocks if n_blocks > 1
     return (e, sum(n or 0 for n in e) / ((n_blocks - n_ignored) or 1)) if n_blocks > 1 or blocksize > 0 else e[0]
 
@@ -384,8 +400,8 @@ def is_packed(entropies, average, threshold_average_entropy, threshold_highest_e
     max_e = max(entropies)
     c1 = average >= _t1
     c2 = max_e >= _t2
-    __log(logger, "Average entropy criterion (>{}): {} ({})".format(_t1, c1, average))
-    __log(logger, "Highest entropy criterion (>{}): {} ({})".format(_t2, c2, max_e))
+    __log(logger, "Average entropy criterion (>={}): {} ({})".format(_t1, c1, average))
+    __log(logger, "Highest entropy criterion (>={}): {} ({})".format(_t2, c2, max_e))
     return c1 and c2
 
 
@@ -393,8 +409,8 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
          return_plt=False, **kwargs):
     """ Plot input binaries' characteristics on a same figure.
     
-    :param img:        destination filename for the created figure
     :param filenames:  list of paths of the binaries to be included in the figure
+    :param img_name:   destination filename for the created figure, without extension (default: first filename)
     :param img_format: image format of the created figure
     :param dpi:        resolution of the created figure
     :param labels:     list of custom labels to be used for the binaries (can be lambda-based)
@@ -402,7 +418,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     :param scale:      use the same scale for multiple files
     :param target:     use this target name in the title (instead of the first filename from the input list)
     :param return_plt: return plt object (if False, close the current figure and return None)
-    :param kwargs:     keyword-arguments for characteristics(...) ; n_samples and window_size
+    :param kwargs:     keyword-arguments for characteristics(...) ; n_samples, window_size and parsed (single file)
     """
     import matplotlib.pyplot as plt
     from matplotlib.patches import Patch
@@ -417,13 +433,20 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     fig.tight_layout(pad=1.5)
     (objs[0] if nf+[0, 1][title] > 1 else objs).axis("off")
     ref_size, ref_n = None, kwargs.get('n_samples', N_SAMPLES)
+    # a parsed binary can only be reused when there is a single file
+    parsed = kwargs.pop('parsed', None)
+    parsed = parsed if nf == 1 else None
+    # resolve the sublabel once, keeping its name for checking whether it refers to the entry point
+    sublabel_name = sublabel if isinstance(sublabel, str) else None
+    if sublabel_name:
+        sublabel = SUBLABELS.get(sublabel_name)
     for i, filepath in enumerate(filenames):
         if scale and ref_size:
             with open(filepath, "rb") as f:
                 size = os.fstat(f.fileno()).st_size
             kwargs['n_samples'] = int(ref_n * size / ref_size)
         obj = objs[i+[0, 1][title]] if nf+[0, 1][title] > 1 else objs
-        data, filename = characteristics(filepath, **kwargs), os.path.basename(filepath)
+        data, filename = characteristics(filepath, parsed=parsed, **kwargs), os.path.basename(filepath)
         n, label = len(data['entropy']), None
         if not ref_size:
             ref_size = data['size']
@@ -434,17 +457,14 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
             fig.suptitle("Entropy per section of %s file: %s" % (data['type'], target or filename), x=x_t, y=y_t,
                          ha="center", va="bottom", fontsize="xx-large", fontweight="bold")
         # set the label and sublabel and display them
-        try:
+        if labels is not None and i < len(labels):
             label = labels[i]
-            if isinstance(label, type(lambda: 0)):
+            if callable(label):
                 label = label(data)
-        except:
-            pass
-        ref_point = .65
-        if sublabel and not (isinstance(sublabel, str) and "ep" in sublabel and data['entrypoint'] is None):
-            if isinstance(sublabel, str):
-                sublabel = SUBLABELS.get(sublabel)
-            sl = sublabel(data) if isinstance(sublabel, type(lambda: 0)) else None
+        ref_point, sl = .65, None
+        # sublabels referring to the entry point cannot be computed when it was not found
+        if callable(sublabel) and not ("ep" in (sublabel_name or "") and data['entrypoint'] is None):
+            sl = sublabel(data)
             if sl:
                 nl, y_pos, f_color = len(sl.split("\n")), ref_point, "black"
                 if label:
@@ -455,7 +475,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
                 obj.text(s=sl, x=-420., y=y_pos, fontsize=f_size, color=f_color, ha="left", va="center")
         if label:
             y_pos = ref_point
-            if sublabel:
+            if sl:
                 nl = len(sl.split("\n"))
                 y_pos = min(1., ref_point + nl * [.16, .12, .09, .08][min(4, nl)-1])
             obj.text(s=label, x=-420., y=y_pos, fontsize="large", ha="left", va="center")
@@ -507,10 +527,7 @@ def plot(*filenames, img_name=None, img_format="png", dpi=200, labels=None, subl
     img_name = str(img_name or os.path.splitext(os.path.basename(filenames[0]))[0])
     # appending the extension to img_name is necessary for avoiding an error when the filename contains a ".[...]" ;
     #  e.g. "PortableWinCDEmu-4.0" => this fails with "ValueError: Format '0' is not supported"
-    try:
-        plt.savefig(img_name + "." + img_format, img_format=img_format, dpi=dpi, bbox_inches="tight")
-    except:  # format argument renamed in further versions of pyplot
-        plt.savefig(img_name + "." + img_format, format=img_format, dpi=dpi, bbox_inches="tight")
+    plt.savefig(img_name + "." + img_format, format=img_format, dpi=dpi, bbox_inches="tight")
     if return_plt:
         return plt
     plt.close()

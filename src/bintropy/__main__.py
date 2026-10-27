@@ -1,4 +1,5 @@
 # -*- coding: UTF-8 -*-
+import lief
 import logging
 from argparse import ArgumentParser, RawTextHelpFormatter
 from ast import literal_eval
@@ -6,7 +7,7 @@ from os.path import exists, isfile
 from time import perf_counter
 
 from .__info__ import __author__, __copyright__, __email__, __license__, __reference__, __source__, __version__
-from .__init__ import bintropy, plot, THRESHOLDS
+from . import bintropy, plot, THRESHOLDS
 
 
 lieflog = logging.getLogger("lief")
@@ -28,7 +29,7 @@ class Positive:
     def __call__(self, string):
         try:
             n = literal_eval(string)
-        except ValueError:
+        except (SyntaxError, TypeError, ValueError):
             raise ValueError(string)
         if not isinstance(n, self._types) or n < 0.:
             raise ValueError(string)
@@ -67,7 +68,7 @@ def main():
     blocks.add_argument("--all-blocks", action="store_true", help="consider all blocks, even those in which more than "
                                                                   "the half are zeros (default: False)")
     parser.add_argument("--blocksize", type=Positive(int), default=256,
-                        help="block size to be considered (default: 256)")
+                        help="block size to be considered, 0 for the whole data (default: 256)")
     parser.add_argument("--do-not-decide", dest="decide", action="store_false",
                         help="do not decide if packed, return entropy values (default: decide)")
     blocks.add_argument("--ignore-half-block-same-byte", action="store_true",
@@ -81,14 +82,16 @@ def main():
     args.logger = logging.getLogger("bintropy")
     args.logger.setLevel([logging.INFO, logging.DEBUG][args.verbose])
     args.ignore_half_block_zeros = not args.all_blocks
-    code = 0
     # execute the tool
     if args.benchmark:
         t1 = perf_counter()
     try:
+        # parse the binary only once, for both the analysis and the plot
+        lief.logging.enable() if args.verbose else lief.logging.disable()
+        args.parsed = lief.parse(args.path)
         r = bintropy(args.path, **vars(args))
         if r is None:
-            raise Exception("no result")
+            return 1
         dt = str(perf_counter() - t1) if args.benchmark else ""
         if not isinstance(r, (tuple, list)):
             r = [r]
@@ -96,11 +99,18 @@ def main():
         if dt != "":
             r.append(dt)
         print(" ".join(r))
-        if args.plot:
-            plot(args.path, **vars(args))
     except Exception as e:
-        if str(e) != "no result":
-            args.logger.exception(e)
-        code = 1
-    return code
+        args.logger.exception(e)
+        return 1
+    if args.plot:
+        try:
+            plot(args.path, **vars(args))
+        except Exception as e:
+            args.logger.error(f"could not plot {args.path}: {e}", exc_info=args.verbose)
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
 
